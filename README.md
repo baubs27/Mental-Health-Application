@@ -14,18 +14,20 @@ This is a coursework prototype, tested only with fictional scenarios. It must
 not diagnose, provide therapy, imply human monitoring, or be offered as a real
 mental health support service.
 
-## Startup scope
+## Current status
 
-Create the base folders, README.md, and AGENTS.md. This step establishes project
-context. The application capabilities below are plans for later implementation.
-There is no selected interface design or running application yet.
+The starter now includes a minimal Vue/FastAPI chat shell and the Live Audio
+course activity. The voice increment uses the STOP skill selected in
+`docs/report.md`. The implementation keeps the visual treatment deliberately
+simple and applies the class principles below: calm readable language,
+contrast, visible keyboard focus, narrow-screen layout, reduced-motion support,
+explicit permission, and user-controlled Mute and End. It is a coursework
+prototype, not a complete mental health support application.
 
-## Your design guidelines — to be completed
-
-Before asking an agent to build the interface, add your own design guidelines
-here. Use the principles taught in class and the research discussed for
-Assignment 3 to explain your choices. The starter does not choose the skill,
-screen layout, or interaction flow for you.
+The broader project design remains open for your review. In particular, this
+increment does not implement the timed STOP exercise, preferences, saved
+history, SQLite, or RAG. Record project-wide design guidelines and future
+decisions here before expanding beyond the bounded activity.
 
 Class principles to carry into your design:
 
@@ -41,7 +43,7 @@ Class principles to carry into your design:
 - Explain how a design choice follows from a class finding, what alternative
   you considered, and what tradeoff you accepted. Check the running result later.
 
-Add your project-specific decisions when you are ready:
+Project decisions and outstanding questions:
 
 - Chosen skill and fictional user/task: [to be decided]
 - Main interaction flow and user controls: [to be decided]
@@ -49,9 +51,10 @@ Add your project-specific decisions when you are ready:
 - Model's role, saved context, and useful personalization: [to be decided]
 - Alternative designs and reasons for the selected direction: [to be added]
 
-You may choose paced breathing, sensory grounding, STOP, or a cognitive reframe
-within the assignment's scope. Record detailed design decisions in
-`docs/design-pipeline.md` as the design develops.
+STOP is selected for this coursework prototype. The detailed Part 3.1 design
+proposal and open questions are in `docs/report.md`; Live Audio behavior,
+request flow, prompts, cleanup, and verification status are in
+`docs/voice-audio.md`.
 
 ## Technology and separation
 
@@ -153,13 +156,44 @@ it into editable Figma frames, and using a selected design to guide a Vue
 revision. That work comes after this startup step and your initial design
 guidelines. Figma edits do not automatically update application code.
 
-## Getting started
+## Run the Live Audio prototype
 
-Read `AGENTS.md`, create the base folders, and keep the undecided design items
-visible. Startup is complete when the folders and these two documents are in
-place. Complete your design guidelines before requesting implementation.
+These commands describe the local setup. Dependencies are installed in local,
+Git-ignored folders. The mock tests and production build have passed; live
+provider behavior remains unverified until a key is configured and a manual
+call is deliberately started.
 
-Add supporting project notes as work requires them. Installation, interface
-building, FastAPI/model connections, SQLite, RAG, and data views are later tasks.
-Record actual setup, configuration, run, stop, and test commands here only after
-they have been implemented and checked.
+1. Create the backend environment and install the declared packages:
+
+   ```powershell
+   cd backend
+   py -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   Copy-Item .env.example .env
+   ```
+
+   Add `OPENAI_API_KEY` only to `backend/.env`. It is ignored by Git. Never use
+   a `VITE_` variable or put a key in Vue, a prompt, screenshot, or API response.
+
+2. Start FastAPI in the backend folder:
+
+   ```powershell
+   .\.venv\Scripts\python.exe -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+   ```
+
+3. In another terminal, install and start Vue:
+
+   ```powershell
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+4. Open the local Vite URL shown in the terminal. Microphone access requires
+   localhost or HTTPS. Use text chat when voice is not configured or a voice
+   request fails.
+
+Focused checks are `npm test` from `frontend/` and `python -m pytest` from
+`backend/`. The production build is `npm run build`. All three passed with the
+local dependencies. Do not make a live provider call automatically; use mock
+checks first and keep any manual classroom call under 60 seconds.
