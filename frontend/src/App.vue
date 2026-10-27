@@ -293,7 +293,7 @@ onBeforeUnmount(() => {
 
       <section class="card model-card" aria-labelledby="model-title">
         <div class="section-heading"><div><p class="eyebrow">Optional model help</p><h2 id="model-title">Ask about a STOP step</h2></div><span class="tag">{{ modelBadge }}</span></div>
-        <p class="small-note">The guide explains the reviewed skill; it does not decide your next action. Use a fictional example. Messages are saved locally. Live mode sends them to OpenAI.</p>
+        <p class="small-note">The guide explains the reviewed skill; it does not decide your next action. Use a fictional example. Messages are saved locally. When you ask, live mode sends your question and recent conversation to OpenAI.</p>
         <div class="chat-log exercise-chat" aria-live="polite" aria-label="Saved exercise conversation">
           <article v-for="(item, index) in exerciseMessages" :key="index" class="message" :class="item.role">
             <p class="message-label">{{ item.role === 'user' ? 'You' : modelLabel(item.model_source) }}</p>

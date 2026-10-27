@@ -50,16 +50,19 @@ flowchart TD
 ```
 
 The actual experience has a sequential four-step Continue control. Users can
-leave from any step and can open crisis support at any time. It does not
-currently implement skip or pause controls, despite those controls in the Part
-3.1 design proposal. The exercise is not forced to run on the proposed
-5/10/30/15-second pace; the displayed duration measures real elapsed time from
-session start through completion or leave.
+leave from any step and open crisis support at any time. It does not implement
+skip or pause controls from the Part 3.1 proposal. The intended guided pace is
+60 seconds plus up to four local transitions under one second each, without
+model Q&A. The current interface exposes optional Q&A during practice; its
+request and provider delay are included in the measured session duration and
+can extend the session beyond that intended pace. Entry/setup is not measured
+separately, and user-chosen pauses are not excluded because there is no explicit
+pause control.
 
 ## Model role and data
 
 The model is an optional explainer for the reviewed STOP skill. FastAPI selects
-the model, prompt, and recent conversation context (at most eight saved turns),
+the model, prompt, and recent conversation context (at most eight most recent successful messages),
 sets the provider request, validates the response, and handles errors. It does
 not diagnose, judge distress, determine whether support appears, or operate
 SQLite. The browser sends only a question and session identifier to the app API.
@@ -80,13 +83,23 @@ is Git-ignored.
 
 ## R/D connections
 
-The Part 3.1 report in `docs/report.md` connects the supplied findings to design.
-R1 reports attention loss beyond 90–100 seconds; this slice keeps one short,
-optional-input skill and does not put model conversation inside the fixed step
-sequence. D1 does not establish a reliable distress-detection method; therefore
-support is user-opened and never gated on model inference or a distress
-classifier. Full wording for R2–R4 and D2–D6 was not included in the supplied
-assignment excerpt, so no claims are attributed to those findings.
+The assignment summary describes an ongoing study with 15 patients, 13
+clinicians, 15 prototype evaluation sessions, and 150 participant–task
+combinations in the coded evaluation data. Its mention counts are evidence of
+where themes appeared, not measures of clinical effectiveness.
+
+| Finding | Design decision and current implementation |
+| --- | --- |
+| **R1 (38 mentions):** around 60 seconds was comfortable; attention loss/abandonment appeared after 90–100 seconds. | Part 3.1 proposes 60 seconds of guided steps and a bounded transition allowance, under 90 seconds total. The Part 3.2 interaction has no timeout or required response; it records actual duration, including step transitions and any optional in-exercise model request/response delay. Explicit pause accounting is not implemented, so user-chosen pauses are currently included. |
+| **R2 (30 mentions):** crisis access should be frictionless across the journey. | A crisis-support control remains visible in the shared header and opens static information without model access. Localized links remain undecided. |
+| **R3 (39 mentions; all 15 participants raised stop/leave):** leaving must carry no consequence. | The app offers Leave from any exercise step, asks for no reason, and stores status `left` with measured duration. |
+| **R4 (68 mentions):** offer control over the journey rather than routing people to one path. | The person decides whether to start, ask the optional model, continue, leave, or open support. This version has one chosen skill only and does not infer emotional state. |
+| **D1 (54 mentions):** contract the interface as distress rises, but the study gives no reliable detection method or specific contraction behavior. | The active exercise always removes the home overview and shows one step. The app does not detect distress. The safety control stays visible; a user-selected compact view is future work. |
+| **D2 (100 mentions):** one atomic skill at a time. | One STOP skill, one step per exercise view. There is no library/menu inside practice. |
+| **D3 (148 mentions; every participant):** reduce emotional cost of feeling, disclosing, or performing. | No disclosure, speech, feedback, or model response is needed to complete STOP. The question box is optional. Live-mode questions are sent to the configured provider; saved messages stay in local SQLite. |
+| **D4 (31 mentions):** keep safety affordance persistently visible. | Crisis-support control stays in the shared header on all app views, including while a request fails. |
+| **D5 (49 mentions):** personalize without a configuration burden; one participant asked for a “usual skill.” | No preference questionnaire is added. With only one skill, Part 3.2 has no skill recommendation. A future multi-skill design would use explicit past selection/self-report, show the basis, and allow a one-step override. The interface discloses that recent conversation context accompanies a live question; whether to offer a separate context opt-out remains open. |
+| **D6 (97 mentions; every participant):** use low-stimulus, non-judgmental language. | Use restrained visual styling and plain wording, visible focus, responsive layout, and reduced-motion support. Wording needs further user review. |
 
 ## Endpoints and failure behavior
 
