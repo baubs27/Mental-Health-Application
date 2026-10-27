@@ -67,5 +67,4 @@ is generic and does not locate regional resources. The provider call was a
 single fictional text question, not a reliability, clinical, or outcome
 assessment. The optional voice feature was not manually tested against a live
 provider. The user-provided API key was stored only in ignored `backend/.env`
-and excluded from the repository; rotate it after the coursework demo because
-it was shared in chat.
+and excluded from the repository; rotate it before any further use because it was shared in chat.

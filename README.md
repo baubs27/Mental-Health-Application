@@ -69,7 +69,7 @@ Put `OPENAI_API_KEY` only in `backend/.env`. That file is ignored by Git. Use
 `backend/.env.example` for safe configuration names. Never put secrets in Vue,
 `VITE_` variables, screenshots, documentation, API responses, or commits.
 Because the development key was shared in this conversation, rotate it in the
-provider dashboard after the coursework demo.
+provider dashboard before further use; it was shared in chat.
 
 ## Run locally
 
