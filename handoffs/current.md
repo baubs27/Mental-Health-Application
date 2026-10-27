@@ -19,11 +19,10 @@ instrument/scoring specification was supplied.
 
 Frontend: 9 tests pass and Vite production build succeeds. The standalone chat
 route created a synthetic conversation, generated a demo reply, reloaded both
-messages from SQLite in the browser, and then removed the test rows. New
-SQLite/API features passed synthetic storage and local HTTP smoke checks, and paced
-breathing start/early-stop was checked in the browser. Synthetic test rows were
-removed; four pre-existing STOP sessions and their messages were preserved.
-SQLite integrity check is `ok`.
+messages from SQLite in the browser, and then removed the chat test rows without
+modifying STOP history. New SQLite/API features passed synthetic storage and
+local HTTP smoke checks, and paced breathing start/early-stop was checked in the
+browser. SQLite integrity check is `ok`.
 
 The latest backend pytest attempt was blocked by the sandbox's temp-directory
 restriction; the in-project temp run stalled, so the new API routes are not

@@ -18,8 +18,8 @@ Verification date: October 26, 2026 (local Eastern time).
   browser's Recent conversations list. The synthetic conversation was removed
   afterward; the pre-existing STOP sessions/messages remain untouched.
 - SQLite integrity: read-only `PRAGMA integrity_check` returned `ok`; after
-  cleanup the working database retained four existing STOP sessions, three
-  messages, zero check-ins, and zero breathing test rows.
+  cleanup there were no standalone chat test sessions. The chat check did not
+  modify the existing STOP practice history or messages.
 - OpenAPI: confirmed breathing, mood-check-in, profile, history, and standalone
   chat routes are
   registered. `GET /api/profile` returned only `paced_breathing` and the
@@ -46,7 +46,7 @@ conversations, privacy/safety context, and separate optional voice controls.
 The STOP practice also has optional model help that can answer general questions
 without forcing them into STOP. Profile showed
 an editable default practice, animation setting, and the no-screening notice.
-History read the four pre-existing STOP sessions from SQLite. Crisis showed
+History read the existing STOP sessions from SQLite. Crisis showed
 local emergency guidance and US 988 call/text/official chat links independently
 of a model response.
 
@@ -54,8 +54,9 @@ Paced breathing was started in the browser. The screen showed “Breathe in
 gently,” cycle 1 of 5, and elapsed duration; after selecting Stop practice,
 History showed a persisted `left` row with its measured duration (0:05). This
 was a synthetic verification session and was then removed from SQLite so it
-would not appear as user activity. The separate API smoke session was also
-removed. The previous STOP conversation/session data remained intact.
+would not appear as user activity. The synthetic standalone chat was removed
+after its SQLite and browser retrieval check; STOP history was not modified by
+that check.
 
 The reference video's screening result and scored assessment are intentionally
 not copied. This prototype has no validated assessment instrument/scoring rules.
