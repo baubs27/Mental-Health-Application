@@ -4,11 +4,13 @@ IST 402 — Assignment 3
 
 ## Purpose and scope
 
-A local coursework prototype for practicing one short skill, STOP. A person can
-move through the four reviewed steps, ask an optional question about the skill,
-leave at any point, review saved local sessions, or open static crisis-support
-information. The app is intended only for fictional scenarios; it is not
-therapy, diagnosis, medical advice, crisis monitoring, or emergency support.
+A local coursework prototype for a small collection of optional skills. It
+includes a 50-second paced-breathing practice, a four-step STOP practice,
+optional self-reported mood check-ins, local history/profile controls, text
+questions about STOP, and optional WebRTC voice. A persistent crisis route works
+without the model. The app is intended only for fictional coursework scenarios;
+it is not therapy, diagnosis, medical advice, crisis monitoring, or emergency
+support.
 
 The guided practice works without a model response. When live text mode is
 configured, FastAPI sends the question and a bounded recent conversation to the
@@ -17,13 +19,17 @@ A deterministic demo and a forced-failure mode support offline verification.
 The optional voice/WebRTC coursework increment remains separate from text
 practice and SQLite conversation history.
 
-## Implemented for Part 3.2
+## Current implementation
 
-- Vue interface for the sequential STOP exercise, measured elapsed time,
-  optional model Q&A, early exit, history, and independent support route.
+- Vue interface for STOP and paced breathing, measured elapsed time, optional
+  visual pacing, early exit, self-reported check-ins, a monthly activity summary,
+  editable local preferences, history, and independent crisis support.
+- Main navigation for Home, Activities, Chat, History, Profile, and Crisis.
+- Optional model Q&A about STOP and separate opt-in WebRTC voice controls.
 - FastAPI routes that own model calls, request validation, and SQLite access.
-- SQLite conversations, skill sessions, and messages. Actual assistant replies
-  are saved; failed user requests are marked failed and do not invent a reply.
+- SQLite conversations, STOP sessions, breathing sessions, coarse mood
+  check-ins, profile preferences, and messages. Actual assistant replies are
+  saved; failed user requests are marked failed and do not invent a reply.
 - Secret configuration through `backend/.env`; this file is ignored by Git.
 - Focused frontend and backend tests, production build, browser walkthrough, and
   read-only SQLite inspection recorded in `docs/verification.md`.
@@ -31,12 +37,12 @@ practice and SQLite conversation history.
 ## Design rationale and open work
 
 `docs/report.md` records the Part 3.1 proposal and its links to the supplied
-R/D findings. It describes intended timing, personalization, user control, and
-unresolved questions. The current build deliberately implements a smaller
-vertical slice. It does not yet implement pause/skip controls, editable
-personalization, feedback, history deletion, retention settings, crisis
-localization, or the proposed RAG query-planning workflow. These are open
-product and design decisions; the app does not infer emotion or diagnosis.
+R/D findings. `docs/design-pipeline.md` maps the current multi-view experience
+to those findings. The app does not infer mood or diagnosis. It excludes
+screening questionnaires and scores because this coursework implementation has
+no validated clinical instrument or scoring rules. Remaining work includes
+reviewing practice wording and pacing, retention/deletion of session and chat
+data, crisis localization, and the proposed RAG query-planning workflow.
 
 Class principles to carry forward:
 
@@ -59,9 +65,12 @@ Class principles to carry forward:
 - `prompts/`: reusable scoped instructions.
 - `handoffs/`: current implementation state for the next work session.
 
-SQLite tables are `conversations`, `skill_sessions`, and `messages`. The model
-has no direct database access. The current prototype uses anonymous local
-session IDs; it has no account system or synchronization between devices.
+SQLite tables are `conversations`, `skill_sessions`, `messages`,
+`breathing_sessions`, `mood_checkins`, and `profile_preferences`. The model has
+no direct database access. The prototype uses anonymous local session IDs; it
+has no account system or synchronization between devices. Check-ins use only a
+coarse user-selected value, are not used to personalize model responses, and can
+be removed from History.
 
 ## Secrets
 

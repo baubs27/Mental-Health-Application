@@ -59,10 +59,37 @@ def initialize(db_path: Path = DEFAULT_DB_PATH) -> None:
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS breathing_sessions (
+                session_id TEXT PRIMARY KEY,
+                skill TEXT NOT NULL DEFAULT 'paced_breathing'
+                    CHECK (skill = 'paced_breathing'),
+                status TEXT NOT NULL CHECK (status IN ('in_progress', 'completed', 'left')),
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                duration_seconds INTEGER CHECK (duration_seconds IS NULL OR duration_seconds >= 0)
+            );
+
+            CREATE TABLE IF NOT EXISTS mood_checkins (
+                checkin_id TEXT PRIMARY KEY,
+                mood TEXT NOT NULL CHECK (mood IN ('low', 'steady', 'good')),
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS profile_preferences (
+                profile_id TEXT PRIMARY KEY CHECK (profile_id = 'local-demo'),
+                default_skill TEXT NOT NULL CHECK (default_skill IN ('STOP', 'paced_breathing')),
+                animate_breathing INTEGER NOT NULL CHECK (animate_breathing IN (0, 1)),
+                updated_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS ix_sessions_started_at
                 ON skill_sessions(started_at DESC);
             CREATE INDEX IF NOT EXISTS ix_messages_conversation_time
                 ON messages(conversation_id, created_at, message_id);
+            CREATE INDEX IF NOT EXISTS ix_breathing_started_at
+                ON breathing_sessions(started_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_checkins_created_at
+                ON mood_checkins(created_at DESC);
             """
         )
 
@@ -223,4 +250,82 @@ def list_history(limit: int = 10, db_path: Path = DEFAULT_DB_PATH) -> list[dict[
                 ).fetchall()
             ]
             result.append(item)
-        return result
+        breathing = db.execute(
+            "SELECT * FROM breathing_sessions ORDER BY started_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        result.extend({**dict(item), "conversation_id": None, "current_step": None, "messages": []}
+                      for item in breathing)
+        result.sort(key=lambda item: item["started_at"], reverse=True)
+        return result[:limit]
+
+
+def begin_breathing_session(db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
+    session_id = str(uuid4())
+    started_at = utc_now()
+    with connect(db_path) as db:
+        db.execute(
+            "INSERT INTO breathing_sessions (session_id, status, started_at) VALUES (?, 'in_progress', ?)",
+            (session_id, started_at),
+        )
+    return {"session_id": session_id, "skill": "paced_breathing", "status": "in_progress", "started_at": started_at}
+
+
+def finish_breathing_session(session_id: str, status: str, db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any] | None:
+    if status not in {"completed", "left"}:
+        raise ValueError("Invalid session status")
+    ended_at = utc_now()
+    with connect(db_path) as db:
+        session = db.execute("SELECT * FROM breathing_sessions WHERE session_id = ?", (session_id,)).fetchone()
+        if not session:
+            return None
+        if session["status"] == "in_progress":
+            started = datetime.fromisoformat(session["started_at"].replace("Z", "+00:00"))
+            ended = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
+            duration = max(0, int((ended - started).total_seconds()))
+            db.execute(
+                "UPDATE breathing_sessions SET status = ?, ended_at = ?, duration_seconds = ? WHERE session_id = ? AND status = 'in_progress'",
+                (status, ended_at, duration, session_id),
+            )
+        return dict(db.execute("SELECT * FROM breathing_sessions WHERE session_id = ?", (session_id,)).fetchone())
+
+
+def add_mood_checkin(mood: str, db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
+    if mood not in {"low", "steady", "good"}:
+        raise ValueError("Invalid mood")
+    item = {"checkin_id": str(uuid4()), "mood": mood, "created_at": utc_now()}
+    with connect(db_path) as db:
+        db.execute("INSERT INTO mood_checkins (checkin_id, mood, created_at) VALUES (?, ?, ?)",
+                   (item["checkin_id"], mood, item["created_at"]))
+    return item
+
+
+def list_mood_checkins(limit: int = 100, db_path: Path = DEFAULT_DB_PATH) -> list[dict[str, Any]]:
+    with connect(db_path) as db:
+        return [dict(row) for row in db.execute(
+            "SELECT * FROM mood_checkins ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()]
+
+
+def delete_mood_checkin(checkin_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
+    with connect(db_path) as db:
+        return db.execute("DELETE FROM mood_checkins WHERE checkin_id = ?", (checkin_id,)).rowcount == 1
+
+
+def get_profile_preferences(db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
+    with connect(db_path) as db:
+        row = db.execute("SELECT * FROM profile_preferences WHERE profile_id = 'local-demo'").fetchone()
+        if row:
+            return {"default_skill": row["default_skill"], "animate_breathing": bool(row["animate_breathing"])}
+        return {"default_skill": "paced_breathing", "animate_breathing": True}
+
+
+def save_profile_preferences(default_skill: str, animate_breathing: bool, db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
+    if default_skill not in {"STOP", "paced_breathing"}:
+        raise ValueError("Invalid default skill")
+    updated_at = utc_now()
+    with connect(db_path) as db:
+        db.execute(
+            "INSERT INTO profile_preferences (profile_id, default_skill, animate_breathing, updated_at) VALUES ('local-demo', ?, ?, ?) ON CONFLICT(profile_id) DO UPDATE SET default_skill = excluded.default_skill, animate_breathing = excluded.animate_breathing, updated_at = excluded.updated_at",
+            (default_skill, int(animate_breathing), updated_at),
+        )
+    return {"default_skill": default_skill, "animate_breathing": animate_breathing}

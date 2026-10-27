@@ -4,68 +4,64 @@ Verification date: October 26, 2026 (local Eastern time).
 
 ## Automated checks
 
-- Backend: `python -m pytest --basetemp .pytest-run` — 16 tests passed.
-- Frontend: `npm test` — 9 tests passed with Node's built-in test runner.
+- Frontend: `npm test` — 9 tests passed.
 - Production bundle: `npm run build` — Vite production build completed.
-- SQLite: opened with Python `sqlite3` using `mode=ro`; `PRAGMA integrity_check`
-  returned `ok`.
-- Secret hygiene: `git check-ignore` confirmed `backend/.env`,
-  `data/app.sqlite3`, `backend/.venv`, and `frontend/node_modules` are ignored.
+- SQLite storage smoke: initialized a separate temporary database and exercised
+  breathing start/leave, a self-report, preference save, and combined history.
+- Backend route smoke against the refreshed local API: breathing start/leave,
+  check-in save/removal, profile read/save, and history read passed with
+  synthetic values. The synthetic check-in and breathing rows were removed
+  afterward; profile preferences were restored to the values read beforehand.
+- SQLite integrity: read-only `PRAGMA integrity_check` returned `ok`; after
+  cleanup the working database retained four existing STOP sessions, three
+  messages, zero check-ins, and zero breathing test rows.
+- OpenAPI: confirmed breathing, mood-check-in, profile, and history routes are
+  registered. `GET /api/profile` returned only `paced_breathing` and the
+  animation preference; no secret/configuration value is returned.
 
-Mock tests do not contact the provider. A single brief live text question was
-sent during the manual walkthrough because the configured key was explicitly
-provided for this app. No Live Audio/WebRTC session was started.
+The backend pytest suite could not be rerun in this sandbox: its default pytest
+base-temp is outside the writable project; an in-project base-temp attempt
+stalled before producing test output and was stopped. Earlier Part 3.2
+verification recorded 16 backend tests passing before the new routes were
+added. No current claim is made that pytest covered the new routes; those were
+checked through the local API and storage smoke paths instead.
+
+No provider request or voice call was made during this pass. The shared key in
+`backend/.env` was not read or displayed by the verification commands.
 
 ## Browser walkthrough
 
-The Vue app was opened at `http://127.0.0.1:5173/` with FastAPI on
-`http://127.0.0.1:8000/`. The live provider response answered the fictional
-question “What does Observe mean in the STOP skill? Give a brief explanation
-without making assumptions about me.” The displayed answer explained noticing
-internal and external experiences without judgment. The browser showed
-`GPT-6 Luna`, and the actual response appeared in the saved session history.
+The updated Vue app was opened at `http://127.0.0.1:5173/` with the refreshed
+FastAPI app on `http://127.0.0.1:8000/`. The narrow browser view showed the
+botanical home card, optional check-in, paced-breathing feature, and fixed six
+item navigation. Activities listed paced breathing and STOP. Chat showed the
+STOP-only question entry and separate optional voice controls. Profile showed
+an editable default practice, animation setting, and the no-screening notice.
+History read the four pre-existing STOP sessions from SQLite. Crisis showed
+local emergency guidance and US 988 call/text/official chat links independently
+of a model response.
 
-The four sequential steps were advanced and completed. The completion view
-reported 0:28; history showed the same measured duration and `completed` status.
-A second session was left from step 1; history showed `left` and 0:04. Crisis
-support was opened from the app and showed the static warning that it is
-available without the model and that the demo is not monitored.
+Paced breathing was started in the browser. The screen showed “Breathe in
+gently,” cycle 1 of 5, and elapsed duration; after selecting Stop practice,
+History showed a persisted `left` row with its measured duration (0:05). This
+was a synthetic verification session and was then removed from SQLite so it
+would not appear as user activity. The separate API smoke session was also
+removed. The previous STOP conversation/session data remained intact.
 
-For failure verification, the local backend was restarted with
-`MODEL_MODE=fail`. A fictional STOP question displayed “The model request
-failed. Your message is saved without a reply.” The failed message remained in
-the conversation, the app offered continue/leave controls, and the session was
-left at 0:07. The live backend was then restarted in its configured mode. The visual pass then checked the home and exercise views at a narrow browser width: warm cream/sage surfaces, a small botanical sprig, and raised primary buttons remained readable without covering the main controls. The button press/hover treatment respects reduced-motion settings.
-
-## Read-only SQLite inspection
-
-The database contains four linked conversations/sessions after the visual pass. This is the observed
-session summary (IDs shortened for readability):
-
-| Session | Status | Step reached | Duration | Messages |
-| --- | --- | ---: | ---: | --- |
-| `772e9aff` | completed | 4 | 28 seconds | user complete; assistant complete from `openai` |
-| `081f9310` | left | 1 | 4 seconds | none |
-| `99cb7ab9` | left | 1 | 7 seconds | user failed; no assistant row |
-| `c01ed469` | left | 1 | 4 seconds | none; created during visual review |
-
-The user question and response were persisted under one conversation/session. The latest 0:04 exit row is the later style-review session.
-The failure row contains the submitted user message marked `failed`; it has no
-assistant response. A read-only query of the tables, timestamps, duration,
-message statuses/source, and integrity check matched what appeared in the
-browser history. The database is local-only and excluded from the repository.
-
-For read-only inspection, open `data/app.sqlite3` with Python's `sqlite3` module
-using URI `file:data/app.sqlite3?mode=ro` and query the three tables. The local
-integrity check was `ok`.
+The reference video's screening result and scored assessment are intentionally
+not copied. This prototype has no validated assessment instrument/scoring rules.
 
 ## Limitations
 
-The current UI has sequential Continue controls but no pause or skip. It has no
-accounts, explicit preference settings, data deletion/retention controls,
-self-report, deployment, remote database, or RAG query-planning. Crisis wording
-is generic and does not locate regional resources. The provider call was a
-single fictional text question, not a reliability, clinical, or outcome
-assessment. The optional voice feature was not manually tested against a live
-provider. The user-provided API key was stored only in ignored `backend/.env`
-and excluded from the repository; rotate it before any further use because it was shared in chat.
+The breathing cue uses 4-second inhale/6-second exhale timing. People should
+breathe comfortably and can stop; it does not require a breath hold. Animation
+can be disabled. Voice is opt-in and was not manually tested with a provider.
+Session-exit persistence on abrupt tab closure is best-effort. STOP session/chat
+delete/retention controls, crisis localization beyond the US link, user
+accounts/sync, deployment, and the proposed RAG workflow are unfinished.
+The model is a STOP explainer, not a general support chat. Check-ins are coarse,
+self-selected and removable, and are not treated as recommendations or
+clinical measures. Review new wording and pacing with intended users.
+
+The API key was shared in chat previously; rotate it before further live use.
+It remains excluded from code, docs, build output, screenshots, and Git.

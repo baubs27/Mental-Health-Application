@@ -3,28 +3,39 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { VoiceSessionController } from './voice/VoiceSessionController.js'
 
 const steps = [
-  { title: 'Stop', body: 'Pause for a moment. You can stop typing or reacting. You do not need to explain anything.' },
-  { title: 'Take a step back', body: 'Give yourself a little space before responding. You can breathe, wait, or use another small pause.' },
-  { title: 'Observe', body: 'Notice what is happening inside you and around you. You do not have to judge, label, or fix it.' },
+  { title: 'Stop', body: 'Pause for a moment. You do not need to explain anything.' },
+  { title: 'Take a step back', body: 'Give yourself a little space before responding. You can wait or take a comfortable breath.' },
+  { title: 'Observe', body: 'Notice what is happening inside and around you. You do not have to judge or fix it.' },
   { title: 'Proceed mindfully', body: 'Choose one small next action, or decide to pause. You can change your mind at any point.' },
 ]
-
+const navItems = [
+  { id: 'home', label: 'Home', icon: '⌂' }, { id: 'activities', label: 'Activities', icon: '✿' },
+  { id: 'chat', label: 'Chat', icon: '♡' }, { id: 'history', label: 'History', icon: '◷' },
+  { id: 'profile', label: 'Profile', icon: '○' }, { id: 'support', label: 'Crisis', icon: '!' },
+]
 const view = ref(location.hash === '#support' ? 'support' : 'home')
 const exercise = ref(null)
+const breathingSession = ref(null)
 const currentStep = ref(1)
 const elapsedSeconds = ref(0)
+const breathingSeconds = ref(0)
+const breathingPhase = ref('Breathe in')
 const exerciseMessages = ref([])
 const question = ref('')
 const sending = ref(false)
 const starting = ref(false)
 const exerciseError = ref('')
 const historyItems = ref([])
+const checkins = ref([])
 const historyError = ref('')
 const appConfig = ref(null)
 const finished = ref(false)
+const breathingFinishing = ref(false)
+const moodChoice = ref('')
+const moodMessage = ref('')
+const preferences = ref({ default_skill: 'paced_breathing', animate_breathing: true })
 let elapsedTimer
 let voiceController
-
 const voiceConfig = ref(null)
 const voiceState = ref('idle')
 const voiceError = ref('')
@@ -32,47 +43,69 @@ const playbackBlocked = ref(false)
 const remoteAudio = ref(null)
 
 const activeStep = computed(() => steps[currentStep.value - 1])
-const elapsedLabel = computed(() => `${Math.floor(elapsedSeconds.value / 60)}:${String(elapsedSeconds.value % 60).padStart(2, '0')}`)
+const elapsedLabel = computed(() => formatDuration(elapsedSeconds.value))
 const exerciseActive = computed(() => Boolean(exercise.value && exercise.value.status === 'in_progress' && !finished.value))
-const modelBadge = computed(() => {
-  if (appConfig.value?.model_mode === 'openai') return `Live model · ${appConfig.value.text_model}`
-  if (appConfig.value?.model_mode === 'fail') return 'Failure demo'
-  return 'Demo model · deterministic'
-})
-const voiceStatus = computed(() => ({
-  idle: 'Voice is ready when you choose to start.',
-  permission: 'Waiting for microphone permission.',
-  connecting: 'Connecting securely to the voice session.',
-  active: 'Voice session active.',
-  muted: 'Microphone muted. Assistant audio can still play.',
-  closing: 'Closing the session and releasing the microphone.',
-  closed: 'Voice session closed. The STOP exercise remains available.',
-  error: voiceError.value || 'Voice could not start. Text guidance remains available.',
-}[voiceState.value]))
-const canStartVoice = computed(() => Boolean(voiceConfig.value?.configured)
-  && ['idle', 'closed', 'error'].includes(voiceState.value))
+const breathingActive = computed(() => Boolean(breathingSession.value && breathingSession.value.status === 'in_progress'))
+const selectedNav = computed(() => ['exercise', 'breathing', 'complete'].includes(view.value) ? '' : view.value)
+const modelBadge = computed(() => appConfig.value?.model_mode === 'openai' ? `Live model · ${appConfig.value.text_model}` : appConfig.value?.model_mode === 'fail' ? 'Failure demo' : 'Demo model · deterministic')
+const voiceStatus = computed(() => ({ idle: 'Voice is ready when you choose to start.', permission: 'Waiting for microphone permission.', connecting: 'Connecting securely to the voice session.', active: 'Voice session active.', muted: 'Microphone muted. Assistant audio can still play.', closing: 'Closing the session and releasing the microphone.', closed: 'Voice session closed. Text practice remains available.', error: voiceError.value || 'Voice could not start. Text guidance remains available.' }[voiceState.value]))
+const canStartVoice = computed(() => Boolean(voiceConfig.value?.configured) && ['idle', 'closed', 'error'].includes(voiceState.value))
 const canMuteVoice = computed(() => ['active', 'muted'].includes(voiceState.value))
 const canEndVoice = computed(() => ['permission', 'connecting', 'active', 'muted'].includes(voiceState.value))
+const monthSessions = computed(() => historyItems.value.filter(item => new Date(item.started_at).getMonth() === new Date().getMonth() && new Date(item.started_at).getFullYear() === new Date().getFullYear()))
+const monthMinutes = computed(() => Math.round(monthSessions.value.reduce((sum, item) => sum + (item.duration_seconds || 0), 0) / 60))
+const monthTitle = computed(() => new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))
 
 async function loadHistory() {
   try {
     const response = await fetch('/api/history')
-    if (!response.ok) throw new Error('History could not be loaded.')
+    if (!response.ok) throw new Error()
     const result = await response.json()
-    historyItems.value = result.sessions
+    historyItems.value = result.sessions || []
+    checkins.value = result.checkins || []
     historyError.value = ''
   } catch {
-    historyError.value = 'Session history is temporarily unavailable. Your current exercise can still run.'
+    historyError.value = 'Your saved activity is temporarily unavailable. You can still use the practices.'
   }
 }
-
+async function loadProfile() {
+  try {
+    const response = await fetch('/api/profile')
+    if (response.ok) preferences.value = await response.json()
+  } catch { /* defaults remain available */ }
+}
+async function saveProfile() {
+  try {
+    const response = await fetch('/api/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(preferences.value) })
+    if (!response.ok) throw new Error()
+    preferences.value = await response.json()
+  } catch { exerciseError.value = 'Your profile setting could not be saved. Please try again.' }
+}
+async function submitCheckin() {
+  if (!moodChoice.value) return
+  moodMessage.value = ''
+  try {
+    const response = await fetch('/api/mood-checkins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mood: moodChoice.value }) })
+    if (!response.ok) throw new Error()
+    moodChoice.value = ''
+    moodMessage.value = 'Your check-in is saved. You can remove it from History.'
+    await loadHistory()
+  } catch { moodMessage.value = 'That check-in was not saved. You can try again or skip it.' }
+}
+async function deleteCheckin(id) {
+  try {
+    const response = await fetch(`/api/mood-checkins/${id}`, { method: 'DELETE' })
+    if (!response.ok) throw new Error()
+    checkins.value = checkins.value.filter(item => item.checkin_id !== id)
+  } catch { historyError.value = 'This check-in could not be removed. Please retry.' }
+}
 async function startExercise() {
   if (starting.value || exerciseActive.value) return
   starting.value = true
   exerciseError.value = ''
   try {
     const response = await fetch('/api/exercises', { method: 'POST' })
-    if (!response.ok) throw new Error('The exercise could not be saved. Check that the local app is running, then try again.')
+    if (!response.ok) throw new Error('The practice could not be saved. Check that the local app is running, then try again.')
     exercise.value = await response.json()
     currentStep.value = exercise.value.current_step
     elapsedSeconds.value = 0
@@ -83,86 +116,54 @@ async function startExercise() {
     location.hash = 'exercise'
     updateElapsed()
     elapsedTimer = window.setInterval(updateElapsed, 250)
-  } catch (error) {
-    exerciseError.value = error.message || 'The exercise could not start.'
-  } finally {
-    starting.value = false
-  }
+  } catch (error) { exerciseError.value = error.message || 'The practice could not start.' }
+  finally { starting.value = false }
 }
-
 function updateElapsed() {
   if (!exercise.value?.started_at || !exerciseActive.value) return
   elapsedSeconds.value = Math.max(0, Math.floor((Date.now() - Date.parse(exercise.value.started_at)) / 1000))
 }
-
 async function goToNextStep() {
   if (!exerciseActive.value) return
   exerciseError.value = ''
-  if (currentStep.value === steps.length) {
-    await finishExercise('completed')
-    return
-  }
-  const nextStep = currentStep.value + 1
+  if (currentStep.value === steps.length) { await finishExercise('completed'); return }
+  const next = currentStep.value + 1
   try {
-    const response = await fetch(`/api/exercises/${exercise.value.session_id}/step`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: nextStep }),
-    })
-    if (!response.ok) throw new Error('This step could not be saved. You can retry or leave the exercise.')
-    currentStep.value = nextStep
-    exercise.value.current_step = nextStep
-  } catch (error) {
-    exerciseError.value = error.message || 'This step could not be saved.'
-  }
+    const response = await fetch(`/api/exercises/${exercise.value.session_id}/step`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ step: next }) })
+    if (!response.ok) throw new Error('This step could not be saved. Retry or leave the practice.')
+    currentStep.value = next
+    exercise.value.current_step = next
+  } catch (error) { exerciseError.value = error.message || 'This step could not be saved.' }
 }
-
 async function sendQuestion() {
-  const text = question.value.trim()
-  if (!text || sending.value || !exerciseActive.value) return
+  const message = question.value.trim()
+  if (!message || sending.value || !exerciseActive.value) return
   question.value = ''
   sending.value = true
   exerciseError.value = ''
-  exerciseMessages.value.push({ role: 'user', content: text, request_status: 'complete' })
-  const localIndex = exerciseMessages.value.length - 1
+  exerciseMessages.value.push({ role: 'user', content: message, request_status: 'complete' })
+  const index = exerciseMessages.value.length - 1
   try {
-    const response = await fetch(`/api/exercises/${exercise.value.session_id}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
-    })
+    const response = await fetch(`/api/exercises/${exercise.value.session_id}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) })
     const result = await response.json().catch(() => ({}))
     if (!response.ok) {
-      exerciseMessages.value[localIndex].request_status = 'failed'
+      exerciseMessages.value[index].request_status = 'failed'
       exerciseError.value = result.detail?.message || result.detail || 'The model request failed. Your message is saved without a reply.'
       return
     }
-    exerciseMessages.value.push({
-      role: 'assistant',
-      content: result.reply,
-      request_status: 'complete',
-      model_source: result.model_source,
-    })
+    exerciseMessages.value.push({ role: 'assistant', content: result.reply, request_status: 'complete', model_source: result.model_source })
   } catch {
-    exerciseMessages.value[localIndex].request_status = 'failed'
+    exerciseMessages.value[index].request_status = 'failed'
     exerciseError.value = 'The request did not reach the app. Check your connection; no reply was invented.'
-  } finally {
-    sending.value = false
-    void loadHistory()
-  }
+  } finally { sending.value = false; void loadHistory() }
 }
-
 async function finishExercise(status, { keepView = false } = {}) {
   if (!exercise.value || finished.value) return true
   exerciseError.value = ''
   try {
-    const response = await fetch(`/api/exercises/${exercise.value.session_id}/finish`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
+    const response = await fetch(`/api/exercises/${exercise.value.session_id}/finish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
     const result = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error('The session end could not be confirmed by the local database.')
+    if (!response.ok) throw new Error('The practice end could not be confirmed by the local database.')
     exercise.value = result
     finished.value = true
     window.clearInterval(elapsedTimer)
@@ -174,78 +175,99 @@ async function finishExercise(status, { keepView = false } = {}) {
       if (status === 'left') exercise.value = null
     }
     return true
-  } catch (error) {
-    exerciseError.value = error.message || 'The session end could not be saved.'
-    sendLeaveBeacon()
-    return false
+  } catch (error) { exerciseError.value = error.message || 'The practice end could not be saved.'; sendLeaveBeacon(); return false }
+}
+async function leaveExercise() { await finishExercise('left') }
+function sendLeaveBeacon() {
+  if (exerciseActive.value) navigator.sendBeacon(`/api/exercises/${exercise.value.session_id}/finish`, new Blob([JSON.stringify({ status: 'left' })], { type: 'application/json' }))
+  if (breathingActive.value) navigator.sendBeacon(`/api/breathing/sessions/${breathingSession.value.session_id}/finish`, new Blob([JSON.stringify({ status: 'left' })], { type: 'application/json' }))
+}
+async function startBreathing() {
+  if (starting.value || breathingActive.value) return
+  starting.value = true
+  exerciseError.value = ''
+  try {
+    const response = await fetch('/api/breathing/sessions', { method: 'POST' })
+    if (!response.ok) throw new Error('Paced breathing could not start. Please retry.')
+    breathingSession.value = await response.json()
+    breathingSeconds.value = 0
+    view.value = 'breathing'
+    location.hash = 'breathing'
+    elapsedTimer = window.setInterval(updateBreathing, 150)
+    updateBreathing()
+  } catch (error) { exerciseError.value = error.message || 'Paced breathing could not start.' }
+  finally { starting.value = false }
+}
+function updateBreathing() {
+  if (!breathingSession.value?.started_at || !breathingActive.value) return
+  breathingSeconds.value = Math.max(0, (Date.now() - Date.parse(breathingSession.value.started_at)) / 1000)
+  const withinCycle = breathingSeconds.value % 10
+  breathingPhase.value = withinCycle < 4 ? 'Breathe in gently' : 'Breathe out slowly'
+  if (breathingSeconds.value >= 50 && !breathingFinishing.value) {
+    window.clearInterval(elapsedTimer)
+    void finishBreathing('completed')
   }
 }
-
-function sendLeaveBeacon() {
-  if (!exerciseActive.value) return
-  const body = new Blob([JSON.stringify({ status: 'left' })], { type: 'application/json' })
-  navigator.sendBeacon(`/api/exercises/${exercise.value.session_id}/finish`, body)
+async function finishBreathing(status) {
+  if (!breathingSession.value || !breathingActive.value || breathingFinishing.value) return true
+  breathingFinishing.value = true
+  try {
+    const response = await fetch(`/api/breathing/sessions/${breathingSession.value.session_id}/finish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error('The practice end could not be saved.')
+    breathingSession.value = result
+    window.clearInterval(elapsedTimer)
+    breathingSeconds.value = result.duration_seconds
+    await loadHistory()
+    if (status === 'completed') { view.value = 'complete'; location.hash = 'complete' }
+    else { breathingSession.value = null; view.value = 'home'; location.hash = '' }
+    return true
+  } catch (error) { exerciseError.value = error.message || 'The practice end could not be saved.'; sendLeaveBeacon(); return false }
+  finally { breathingFinishing.value = false }
 }
-
-async function leaveExercise() {
-  await finishExercise('left')
-}
-
 async function openSupport() {
   if (exerciseActive.value) await finishExercise('left', { keepView: true })
+  if (breathingActive.value) await finishBreathing('left')
   view.value = 'support'
   location.hash = 'support'
 }
-
-function returnHome() {
-  view.value = 'home'
-  location.hash = ''
+async function navigate(id) {
+  if (id === 'support') { await openSupport(); return }
+  if (exerciseActive.value) await finishExercise('left', { keepView: true })
+  if (breathingActive.value) await finishBreathing('left')
   exercise.value = null
-  finished.value = false
-  void loadHistory()
+  view.value = id
+  location.hash = id === 'home' ? '' : id
+  await loadHistory()
 }
-
+function returnHome() { void navigate('home') }
 function onHashChange() {
-  const next = location.hash.replace('#', '')
+  const next = location.hash.slice(1)
   if (next === 'support') view.value = 'support'
   else if (next === 'exercise' && exerciseActive.value) view.value = 'exercise'
+  else if (next === 'breathing' && breathingActive.value) view.value = 'breathing'
   else if (next === 'complete' && finished.value) view.value = 'complete'
+  else if (navItems.some(item => item.id === next)) view.value = next || 'home'
   else view.value = 'home'
 }
-
-function onPageHide() {
-  sendLeaveBeacon()
-  void voiceController?.end()
-}
-
+function onPageHide() { sendLeaveBeacon(); void voiceController?.end() }
 async function startVoice() { if (canStartVoice.value) await voiceController?.start() }
 function toggleVoiceMute() { voiceController?.mute() }
 async function endVoice() { await voiceController?.end() }
 function formatDate(value) { return new Date(value).toLocaleString() }
-function formatDuration(value) { return `${Math.floor((value || 0) / 60)}:${String((value || 0) % 60).padStart(2, '0')}` }
-function modelLabel(source) { return source === 'openai' ? 'GPT-6 Luna' : 'Demo model (deterministic)' }
+function formatDuration(value) { const seconds = Math.max(0, Math.floor(value || 0)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` }
+function sessionName(item) { return item.skill === 'STOP' ? 'STOP practice' : 'Paced breathing' }
+function modelLabel(source) { return source === 'openai' ? 'Live model' : 'Demo model (deterministic)' }
 
 onMounted(async () => {
   window.addEventListener('hashchange', onHashChange)
   window.addEventListener('pagehide', onPageHide)
-  try {
-    const response = await fetch('/api/app/config')
-    if (response.ok) appConfig.value = await response.json()
-  } catch { /* the static STOP skill remains usable if FastAPI is offline */ }
-  try {
-    const response = await fetch('/api/voice/config')
-    if (response.ok) voiceConfig.value = await response.json()
-  } catch {
-    voiceConfig.value = { configured: false, max_session_seconds: 300 }
-  }
-  voiceController = new VoiceSessionController({
-    audioElement: remoteAudio.value,
-    onState: ({ state, error }) => { voiceState.value = state; voiceError.value = error },
-    onPlaybackBlocked: (blocked) => { playbackBlocked.value = blocked },
-  })
-  await loadHistory()
+  try { const response = await fetch('/api/app/config'); if (response.ok) appConfig.value = await response.json() } catch { /* practices work without the model */ }
+  try { const response = await fetch('/api/voice/config'); if (response.ok) voiceConfig.value = await response.json() }
+  catch { voiceConfig.value = { configured: false, max_session_seconds: 300 } }
+  voiceController = new VoiceSessionController({ audioElement: remoteAudio.value, onState: ({ state, error }) => { voiceState.value = state; voiceError.value = error }, onPlaybackBlocked: blocked => { playbackBlocked.value = blocked } })
+  await Promise.all([loadHistory(), loadProfile()])
 })
-
 onBeforeUnmount(() => {
   window.removeEventListener('hashchange', onHashChange)
   window.removeEventListener('pagehide', onPageHide)
@@ -258,128 +280,45 @@ onBeforeUnmount(() => {
 <template>
   <main class="app-shell">
     <header class="topbar">
-      <a class="brand" href="#" @click.prevent="returnHome">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" focusable="false">
-            <path d="M16 27V14m0 7c-6 0-10-4-10-10 6 0 10 4 10 10Zm0-5c0-6 4-10 10-10 0 6-4 10-10 10Z" />
-          </svg>
-        </span>
-        <span><span class="eyebrow">IST 402 · Coursework prototype</span><strong>Mental Health Skills</strong></span>
-      </a>
+      <a class="brand" href="#" @click.prevent="returnHome"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" focusable="false"><path d="M16 27V14m0 7c-6 0-10-4-10-10 6 0 10 4 10 10Zm0-5c0-6 4-10 10-10 0 6-4 10-10 10Z"/></svg></span><span><span class="eyebrow">IST 402 · Coursework prototype</span><strong>Little Pause</strong></span></a>
       <button class="support-link" type="button" @click="openSupport">Crisis support</button>
     </header>
 
+    <p class="notice">For fictional coursework scenarios only. This prototype is not therapy, diagnosis, medical advice, or monitored support.</p>
+
     <template v-if="view === 'support'">
-      <section class="support-page" aria-labelledby="support-title">
-        <p class="eyebrow">Available without the model</p>
-        <h1 id="support-title">Crisis support</h1>
-        <p>If you may be in immediate danger, contact your local emergency services or a trusted person now.</p>
-        <p>This coursework demo is not monitored and cannot provide emergency support. You can leave the exercise without completing it.</p>
-        <button class="button secondary" type="button" @click="returnHome">Return to the app</button>
-      </section>
+      <section class="support-page" aria-labelledby="support-title"><p class="eyebrow">Here whenever you need it</p><h1 id="support-title">Crisis support</h1><p>If you may be in immediate danger, contact local emergency services or someone you trust now.</p><p>This coursework app is not monitored and cannot provide emergency support. You can leave any practice without completing it.</p><div class="support-options"><p><strong>In the United States and territories</strong><br>Call or text 988, or use the official Lifeline chat.</p><a class="button primary" href="tel:988">Call 988</a><a class="button secondary" href="sms:988">Text 988</a><a class="button secondary" href="https://988lifeline.org/get-help/" target="_blank" rel="noopener">Open 988 chat and help</a></div></section>
     </template>
 
     <template v-else-if="view === 'exercise' && exercise">
-      <p class="notice">Use a fictional example. This demo is not therapy, diagnosis, medical advice, or a monitored support service.</p>
-      <section class="card exercise-card" aria-labelledby="exercise-title">
-        <div class="exercise-topline">
-          <div><p class="eyebrow">STOP · Step {{ currentStep }} of 4</p><h1 id="exercise-title">{{ activeStep.title }}</h1></div>
-          <div class="timer" role="timer" aria-label="Exercise duration">{{ elapsedLabel }}</div>
-        </div>
-        <div class="progress-track" role="progressbar" :aria-valuenow="currentStep" aria-valuemin="1" aria-valuemax="4" :aria-label="`Step ${currentStep} of 4`"><span :style="{ width: `${currentStep * 25}%` }"></span></div>
-        <p class="step-copy">{{ activeStep.body }}</p>
-        <div class="exercise-actions">
-          <button class="button primary" type="button" @click="goToNextStep">{{ currentStep === 4 ? 'Complete STOP' : 'Continue' }}</button>
-          <button class="button quiet" type="button" @click="leaveExercise">Leave exercise</button>
-        </div>
-        <p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p>
-      </section>
-
-      <section class="card model-card" aria-labelledby="model-title">
-        <div class="section-heading"><div><p class="eyebrow">Optional model help</p><h2 id="model-title">Ask about a STOP step</h2></div><span class="tag">{{ modelBadge }}</span></div>
-        <p class="small-note">The guide explains the reviewed skill; it does not decide your next action. Use a fictional example. Messages are saved locally. When you ask, live mode sends your question and recent conversation to OpenAI.</p>
-        <div class="chat-log exercise-chat" aria-live="polite" aria-label="Saved exercise conversation">
-          <article v-for="(item, index) in exerciseMessages" :key="index" class="message" :class="item.role">
-            <p class="message-label">{{ item.role === 'user' ? 'You' : modelLabel(item.model_source) }}</p>
-            <p>{{ item.content }}</p>
-            <p v-if="item.request_status === 'failed'" class="failed-note">No model reply was saved. You can try again or continue the exercise.</p>
-          </article>
-        </div>
-        <form class="chat-form" @submit.prevent="sendQuestion">
-          <label class="sr-only" for="exercise-question">Question about STOP</label>
-          <input id="exercise-question" v-model="question" maxlength="2000" autocomplete="off" placeholder="What does Observe mean?" :disabled="sending || !exerciseActive" />
-          <button class="button secondary" type="submit" :disabled="sending || !question.trim()">{{ sending ? 'Asking…' : 'Ask' }}</button>
-        </form>
-        <p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p>
-      </section>
+      <section class="card exercise-card"><div class="exercise-topline"><div><p class="eyebrow">STOP · Step {{ currentStep }} of 4</p><h1>{{ activeStep.title }}</h1></div><div class="timer" role="timer" aria-label="Practice duration">{{ elapsedLabel }}</div></div><div class="progress-track" role="progressbar" :aria-valuenow="currentStep" aria-valuemin="1" aria-valuemax="4" :aria-label="`Step ${currentStep} of 4`"><span :style="{ width: `${currentStep * 25}%` }"></span></div><p class="step-copy">{{ activeStep.body }}</p><div class="exercise-actions"><button class="button primary" type="button" @click="goToNextStep">{{ currentStep === 4 ? 'Complete STOP' : 'Continue' }}</button><button class="button quiet" type="button" @click="leaveExercise">Leave practice</button></div><p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p></section>
+      <section class="card model-card"><div class="section-heading"><div><p class="eyebrow">Optional model help</p><h2>Ask about a STOP step</h2></div><span class="tag">{{ modelBadge }}</span></div><p class="small-note">The model explains the reviewed skill; it does not decide what you should do. Messages are saved locally. In live mode, your question and recent conversation are sent to OpenAI.</p><div class="chat-log" aria-live="polite" aria-label="Practice conversation"><article v-for="(item, index) in exerciseMessages" :key="index" class="message" :class="item.role"><p class="message-label">{{ item.role === 'user' ? 'You' : modelLabel(item.model_source) }}</p><p>{{ item.content }}</p><p v-if="item.request_status === 'failed'" class="failed-note">No model reply was saved. You can retry or continue the practice.</p></article></div><form class="chat-form" @submit.prevent="sendQuestion"><label class="sr-only" for="exercise-question">Question about STOP</label><input id="exercise-question" v-model="question" maxlength="2000" autocomplete="off" placeholder="What does Observe mean?" :disabled="sending || !exerciseActive"><button class="button secondary" type="submit" :disabled="sending || !question.trim()">{{ sending ? 'Asking…' : 'Ask' }}</button></form><p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p></section>
     </template>
 
-    <template v-else-if="view === 'complete'">
-      <section class="card completion-card" aria-labelledby="complete-title">
-        <p class="eyebrow">Session saved</p>
-        <h1 id="complete-title">You completed the STOP steps</h1>
-        <p>Recorded duration: <strong>{{ formatDuration(exercise?.duration_seconds) }}</strong>. Completing the steps does not measure mental health or improvement.</p>
-        <button class="button primary" type="button" @click="returnHome">Return to the app</button>
-      </section>
+    <template v-else-if="view === 'breathing' && breathingSession">
+      <section class="card breathing-card"><p class="eyebrow">A short guided practice · 5 cycles</p><h1>Paced breathing</h1><p class="small-note">Breathe comfortably. There is no pause or breath hold. You can stop whenever you like.</p><div class="breath-stage"><div class="breath-orb" :class="{ animated: preferences.animate_breathing }" :style="{ '--breath-progress': `${Math.min(breathingSeconds % 10 / 10, 1) * 100}%` }" role="img" :aria-label="breathingPhase"><span>{{ breathingPhase }}</span></div></div><p class="breath-count">Cycle {{ Math.min(5, Math.floor(breathingSeconds / 10) + 1) }} of 5 · {{ formatDuration(breathingSeconds) }} / 0:50</p><button class="button quiet" type="button" @click="preferences.animate_breathing = !preferences.animate_breathing; saveProfile()">{{ preferences.animate_breathing ? 'Turn animation off' : 'Turn animation on' }}</button><button class="button quiet leave-breathing" type="button" @click="finishBreathing('left')">Stop practice</button><p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p></section>
     </template>
 
-    <template v-else>
-      <p class="notice">For fictional coursework scenarios only. This is a learning prototype, not therapy, diagnosis, medical advice, or a monitored support service.</p>
-      <section class="card welcome-card" aria-labelledby="welcome-title">
-        <svg class="hero-plant" viewBox="0 0 180 170" aria-hidden="true" focusable="false">
-          <path class="plant-stem" d="M91 166c3-38-2-70-22-105m25 105c-2-42 11-78 39-112m-48 70c-17-13-29-19-44-21m52 35c15-15 29-24 46-30" />
-          <path class="plant-leaf plant-leaf-one" d="M69 75C43 69 34 50 38 32c24 2 39 17 36 41-1 4-2 5-5 2Z" />
-          <path class="plant-leaf plant-leaf-two" d="M91 91c-5-27 8-45 29-52 9 23 2 43-21 54-4 2-6 1-8-2Z" />
-          <path class="plant-leaf plant-leaf-three" d="M53 124c-20-1-32-14-35-32 20-4 36 5 41 24 1 4-1 7-6 8Z" />
-          <path class="plant-leaf plant-leaf-four" d="M111 132c8-21 25-29 44-24-3 21-17 34-37 31-6-1-9-3-7-7Z" />
-          <path class="plant-leaf plant-leaf-five" d="M128 63c2-21 16-33 36-34 2 21-8 36-29 40-5 1-8-1-7-6Z" />
-        </svg>
-        <div class="welcome-copy">
-          <p class="eyebrow">A little room to pause</p>
-          <h1 id="welcome-title">Try the STOP skill</h1>
-          <p>Move through the four steps at your own pace. You can leave at any point or open Crisis support.</p>
-          <button class="button primary start-button" type="button" :disabled="starting" @click="startExercise">{{ starting ? 'Starting…' : 'Start STOP' }}</button>
-        </div>
-        <p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p>
-      </section>
+    <template v-else-if="view === 'complete'"><section class="card completion-card"><p class="eyebrow">Session saved</p><h1>{{ exercise?.skill === 'STOP' ? 'You completed the STOP steps' : 'Practice complete' }}</h1><p>Recorded duration: <strong>{{ formatDuration(exercise?.duration_seconds ?? breathingSession?.duration_seconds) }}</strong>. Time is a record of the session, not a measure of wellbeing or improvement.</p><button class="button primary" type="button" @click="returnHome">Return home</button></section></template>
 
-      <section class="card steps-overview" aria-labelledby="steps-title">
-        <div class="section-heading"><div><p class="eyebrow">Four steps · about 90 seconds</p><h2 id="steps-title">What to expect</h2></div><span class="tag">You stay in control</span></div>
-        <ol><li v-for="(step, index) in steps" :key="step.title"><span class="step-number">{{ index + 1 }}</span><span><strong>{{ step.title }}</strong><small>{{ step.body }}</small></span></li></ol>
-      </section>
-
-      <section class="card history-card" aria-labelledby="history-title">
-        <div class="section-heading"><div><p class="eyebrow">Local SQLite</p><h2 id="history-title">Recent sessions</h2></div><button class="button quiet refresh-button" type="button" @click="loadHistory">Refresh</button></div>
-        <p class="small-note">Session status, measured duration, and conversation are stored on this computer for the coursework demo. Do not enter real personal details.</p>
-        <p v-if="historyError" class="error-message" role="alert">{{ historyError }}</p>
-        <p v-else-if="!historyItems.length" class="empty-state">No sessions saved yet.</p>
-        <details v-for="item in historyItems" :key="item.session_id" class="history-entry">
-          <summary><span>{{ formatDate(item.started_at) }} · {{ item.skill }} · {{ item.status }}</span><strong>{{ item.status === 'in_progress' ? 'In progress' : formatDuration(item.duration_seconds) }}</strong></summary>
-          <p class="small-note">Step {{ item.current_step }} of 4 · session {{ item.session_id.slice(0, 8) }}</p>
-          <article v-for="message in item.messages" :key="message.message_id" class="history-message">
-            <strong>{{ message.role === 'user' ? 'You' : modelLabel(message.model_source) }}:</strong> {{ message.content }}
-            <span v-if="message.request_status === 'failed'" class="failed-note">Model response failed; no assistant reply stored.</span>
-          </article>
-          <p v-if="!item.messages.length" class="small-note">No conversation messages in this session.</p>
-        </details>
-      </section>
-
-      <section class="card voice-card" aria-labelledby="voice-title">
-        <div class="section-heading"><div><p class="eyebrow">Optional · WebRTC</p><h2 id="voice-title">Talk through a question</h2></div><span class="tag" :class="{ ready: voiceConfig?.configured }">{{ voiceConfig?.configured ? 'Configured' : 'Not configured' }}</span></div>
-        <p class="voice-description">Voice is a separate optional feature. Audio and transcripts are not saved by this app; text practice and the crisis route work without voice.</p>
-        <div class="voice-controls">
-          <button class="button primary" type="button" :disabled="!canStartVoice" @click="startVoice">Start voice</button>
-          <button class="button secondary" type="button" :disabled="!canMuteVoice" @click="toggleVoiceMute">{{ voiceState === 'muted' ? 'Unmute microphone' : 'Mute microphone' }}</button>
-          <button class="button quiet" type="button" :disabled="!canEndVoice" @click="endVoice">End voice</button>
-        </div>
-        <p class="status" role="status" aria-live="polite">{{ voiceStatus }}</p>
-        <p v-if="voiceError" class="error-message" role="alert">{{ voiceError }}</p>
-        <p v-if="voiceConfig && !voiceConfig.configured" class="small-note">Voice requires a server-side key. No key belongs in this browser.</p>
-        <button v-if="playbackBlocked" class="button secondary playback-button" type="button" @click="voiceController?.enableAssistantAudio()">Enable assistant audio</button>
-        <audio ref="remoteAudio" autoplay playsinline class="audio-output" aria-label="Assistant voice audio"></audio>
-      </section>
+    <template v-else-if="view === 'home'">
+      <section class="card welcome-card"><div class="welcome-copy"><p class="eyebrow">A gentle place to begin</p><h1>A little room to pause.</h1><p>Choose a small practice for this moment. You can stop at any time.</p></div><svg class="hero-plant" viewBox="0 0 180 170" aria-hidden="true"><path class="plant-stem" d="M91 166c3-38-2-70-22-105m25 105c-2-42 11-78 39-112m-48 70c-17-13-29-19-44-21m52 35c15-15 29-24 46-30"/><path class="plant-leaf plant-leaf-one" d="M69 75C43 69 34 50 38 32c24 2 39 17 36 41-1 4-2 5-5 2Z"/><path class="plant-leaf plant-leaf-two" d="M91 91c-5-27 8-45 29-52 9 23 2 43-21 54-4 2-6 1-8-2Z"/><path class="plant-leaf plant-leaf-three" d="M53 124c-20-1-32-14-35-32 20-4 36 5 41 24 1 4-1 7-6 8Z"/><path class="plant-leaf plant-leaf-four" d="M111 132c8-22 27-29 45-23-4 20-20 31-39 29-5 0-7-2-6-6Z"/></svg></section>
+      <section class="card checkin-card"><div class="section-heading"><div><p class="eyebrow">Optional · your words for yourself</p><h2>How are you feeling?</h2></div><span aria-hidden="true">☀</span></div><p>Only you choose a check-in. The app does not infer how you feel.</p><div class="mood-options"><button v-for="mood in [{ id: 'low', text: 'A little low', icon: '☁' }, { id: 'steady', text: 'Somewhere in the middle', icon: '◒' }, { id: 'good', text: 'Doing okay', icon: '☀' }]" :key="mood.id" type="button" class="mood-button" :aria-pressed="moodChoice === mood.id" @click="moodChoice = mood.id"><span>{{ mood.icon }}</span>{{ mood.text }}</button></div><div class="checkin-submit"><button class="button primary" type="button" :disabled="!moodChoice" @click="submitCheckin">Save check-in</button><button class="button quiet" type="button" @click="moodChoice = ''; moodMessage = 'No check-in saved.'">Skip</button></div><p v-if="moodMessage" class="small-note" role="status">{{ moodMessage }}</p></section>
+      <section v-if="preferences.default_skill === 'paced_breathing'" class="card featured-practice"><div><p class="eyebrow">Your usual practice · 50 seconds</p><h2>Paced breathing</h2><p>Five gentle cycles: breathe in for four seconds, out for six. No hold.</p><button class="button primary start-button" type="button" :disabled="starting" @click="startBreathing">{{ starting ? 'Opening…' : 'Open practice' }}</button></div><div class="feature-orb" aria-hidden="true">breathe</div></section>
+      <section v-else class="card featured-practice"><div><p class="eyebrow">Your usual practice · four short steps</p><h2>STOP</h2><p>Pause, notice what is happening, and choose one small next action.</p><button class="button primary start-button" type="button" :disabled="starting" @click="startExercise">{{ starting ? 'Opening…' : 'Open practice' }}</button></div><div class="feature-orb leaf-orb" aria-hidden="true">✿</div></section>
+      <section class="card quick-links"><p class="eyebrow">Nice to explore</p><button type="button" @click="navigate('chat')"><span>♡</span><span><strong>Talk it through</strong><small>Ask about a reviewed skill</small></span><b>›</b></button><button type="button" @click="navigate('history')"><span>◷</span><span><strong>Your days</strong><small>Check-ins and practice history</small></span><b>›</b></button><button type="button" @click="navigate('activities')"><span>✿</span><span><strong>Activities</strong><small>Explore short guided practices</small></span><b>›</b></button></section>
     </template>
 
-    <footer class="footer-note">This local prototype is for fictional examples. It does not diagnose or monitor people. Session and message data are stored in the local SQLite file; provider data handling depends on the configured API account.</footer>
+    <template v-else-if="view === 'activities'"><section class="page-heading"><p class="eyebrow">Choose what fits this moment</p><h1>Activities</h1><p>There is no required order. You can leave any practice at any time.</p></section><section class="card activity-card"><div class="activity-icon">◌</div><div><p class="eyebrow">50 seconds · gentle pacing</p><h2>Paced breathing</h2><p>Follow an optional visual cue for five comfortable inhale/exhale cycles. No breath holds.</p><button class="button primary" type="button" :disabled="starting" @click="startBreathing">{{ starting ? 'Opening…' : 'Start paced breathing' }}</button></div></section><section class="card activity-card"><div class="activity-icon warm">✦</div><div><p class="eyebrow">Four short steps</p><h2>STOP</h2><p>A brief pause, notice, and choice. You do not need to share or explain anything.</p><button class="button secondary" type="button" :disabled="starting" @click="startExercise">{{ starting ? 'Opening…' : 'Start STOP' }}</button></div></section><p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p></template>
+
+    <template v-else-if="view === 'chat'"><section class="page-heading"><p class="eyebrow">Optional conversation</p><h1>Talk it through</h1><p>Ask a question about STOP during a practice. The model explains the skill; it does not provide therapy or decide what you should do.</p></section><section class="card chat-entry"><p class="eyebrow">Skill questions</p><h2>Start a STOP practice to ask</h2><p>Your question and a short recent conversation are sent to the configured model only in live mode. You can complete STOP without chatting.</p><button class="button primary" type="button" :disabled="starting" @click="startExercise">Open STOP and ask a question</button></section><section class="card voice-card"><div class="section-heading"><div><p class="eyebrow">Optional · WebRTC voice</p><h2>Talk by voice</h2></div><span class="tag" :class="{ ready: voiceConfig?.configured }">{{ voiceConfig?.configured ? 'Configured' : 'Not configured' }}</span></div><p class="voice-description">Voice is separate from the saved text practice. This app does not save voice transcripts. Microphone access starts only when you choose Start voice.</p><div class="voice-controls"><button class="button secondary" type="button" :disabled="!canStartVoice" @click="startVoice">Start voice</button><button class="button secondary" type="button" :disabled="!canMuteVoice" @click="toggleVoiceMute">{{ voiceState === 'muted' ? 'Unmute microphone' : 'Mute microphone' }}</button><button class="button quiet" type="button" :disabled="!canEndVoice" @click="endVoice">End voice</button></div><p class="status" role="status" aria-live="polite">{{ voiceStatus }}</p><p v-if="voiceError" class="error-message" role="alert">{{ voiceError }}</p><p v-if="voiceConfig && !voiceConfig.configured" class="small-note">Voice requires a server-side key. No key belongs in the browser.</p><button v-if="playbackBlocked" class="button secondary" type="button" @click="voiceController?.enableAssistantAudio()">Enable assistant audio</button><audio ref="remoteAudio" autoplay playsinline class="audio-output" aria-label="Assistant voice audio" /></section></template>
+
+    <template v-else-if="view === 'history'"><section class="page-heading"><p class="eyebrow">Your activity · stored on this device</p><h1>Your days</h1><p>History is a record of what you chose to do. It does not measure improvement.</p></section><section class="card month-card"><p class="eyebrow">Your month in view</p><h2>{{ monthTitle }}</h2><div class="month-stats"><div><strong>{{ checkins.filter(item => new Date(item.created_at).getMonth() === new Date().getMonth()).length }}</strong><span>check-ins</span></div><div><strong>{{ monthSessions.length }}</strong><span>practices</span></div><div><strong>{{ monthMinutes }}</strong><span>minutes</span></div></div></section><section class="card history-card"><div class="section-heading"><div><p class="eyebrow">Practice and check-in log</p><h2>Recent activity</h2></div><button class="button quiet refresh-button" type="button" @click="loadHistory">Refresh</button></div><p v-if="historyError" class="error-message" role="alert">{{ historyError }}</p><p v-else-if="!historyItems.length && !checkins.length" class="empty-state">There is no activity saved yet. You can start whenever you like.</p><article v-for="item in historyItems" :key="item.session_id" class="history-entry"><div><strong>{{ sessionName(item) }}</strong><span class="history-meta">{{ formatDate(item.started_at) }} · {{ item.status }} · {{ formatDuration(item.duration_seconds) }}</span></div><details v-if="item.messages?.length"><summary>View saved conversation ({{ item.messages.length }} turns)</summary><article v-for="message in item.messages" :key="message.message_id" class="history-message"><strong>{{ message.role === 'user' ? 'You' : modelLabel(message.model_source) }}</strong><p>{{ message.content }}</p><small v-if="message.request_status === 'failed'">Request failed; no answer was saved.</small></article></details></article><div v-if="checkins.length" class="checkin-history"><p class="eyebrow">How you checked in</p><p v-for="item in checkins" :key="item.checkin_id" class="checkin-row"><span>{{ { low: 'A little low', steady: 'Somewhere in the middle', good: 'Doing okay' }[item.mood] }} · {{ formatDate(item.created_at) }}</span><button class="text-button" type="button" @click="deleteCheckin(item.checkin_id)">Remove</button></p></div></section></template>
+
+    <template v-else-if="view === 'profile'"><section class="page-heading"><p class="eyebrow">Your choices stay yours</p><h1>Profile</h1><p>There is no account or diagnosis in this coursework demo. Settings are local to this installation.</p></section><section class="card profile-card"><p class="eyebrow">Practice preferences</p><label for="default-skill">Your usual practice</label><select id="default-skill" v-model="preferences.default_skill" @change="saveProfile"><option value="paced_breathing">Paced breathing</option><option value="STOP">STOP</option></select><p class="small-note">This only sets the featured practice. You can always choose a different activity.</p><label class="toggle-row"><span><strong>Animate breathing circle</strong><small>Turn off visual movement whenever you prefer.</small></span><input v-model="preferences.animate_breathing" type="checkbox" @change="saveProfile"></label><div class="profile-note"><strong>Screening is not included.</strong><p>This prototype does not score symptoms, assess safety, or make a diagnosis. Crisis support is always available separately.</p></div></section><section class="card profile-card"><p class="eyebrow">Your data</p><h2>Simple and local</h2><p>Check-ins, practice duration, and text conversations are saved in the local SQLite database for this coursework demonstration. They are not tied to a named account. Live model questions are sent to the configured provider.</p><button class="button quiet" type="button" @click="navigate('history')">Review or remove check-ins</button></section></template>
+
+    <p v-if="['home', 'activities'].includes(view) && exerciseError" class="error-message" role="alert">{{ exerciseError }}</p>
+    <footer v-if="!['exercise', 'breathing', 'complete', 'support'].includes(view)" class="footer-note">A small pause, at your pace. You can open crisis support at any time.</footer>
+    <nav class="bottom-nav" aria-label="Main navigation"><button v-for="item in navItems" :key="item.id" type="button" :class="{ active: selectedNav === item.id, crisis: item.id === 'support' }" :aria-current="selectedNav === item.id ? 'page' : undefined" @click="navigate(item.id)"><span aria-hidden="true">{{ item.icon }}</span><small>{{ item.label }}</small></button></nav>
   </main>
 </template>

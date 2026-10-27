@@ -38,7 +38,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type"],
 )
 
@@ -61,6 +61,17 @@ class FinishRequest(BaseModel):
 class SessionMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
     message: str = Field(min_length=1, max_length=2000)
+
+
+class MoodCheckin(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mood: Literal["low", "steady", "good"]
+
+
+class ProfilePreferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    default_skill: Literal["STOP", "paced_breathing"]
+    animate_breathing: bool
 
 
 def configured_duration() -> int:
@@ -343,7 +354,52 @@ async def finish_exercise(session_id: str, payload: FinishRequest) -> dict[str, 
 
 @app.get("/api/history")
 async def get_history() -> dict[str, Any]:
-    return {"sessions": storage.list_history(10, DB_PATH)}
+    return {
+        "sessions": storage.list_history(50, DB_PATH),
+        "checkins": storage.list_mood_checkins(100, DB_PATH),
+    }
+
+
+@app.post("/api/breathing/sessions", status_code=201)
+async def create_breathing_session() -> dict[str, Any]:
+    """Create a local record before the 50-second paced breathing practice."""
+    return storage.begin_breathing_session(DB_PATH)
+
+
+@app.post("/api/breathing/sessions/{session_id}/finish")
+async def finish_breathing_session(session_id: str, payload: FinishRequest) -> dict[str, Any]:
+    session = storage.finish_breathing_session(session_id, payload.status, DB_PATH)
+    if not session:
+        raise HTTPException(status_code=404, detail="Breathing session not found")
+    return session
+
+
+@app.post("/api/mood-checkins", status_code=201)
+async def create_mood_checkin(payload: MoodCheckin) -> dict[str, Any]:
+    """Save an optional, coarse self-report. No model or mood inference is involved."""
+    return storage.add_mood_checkin(payload.mood, DB_PATH)
+
+
+@app.get("/api/mood-checkins")
+async def get_mood_checkins() -> dict[str, Any]:
+    return {"checkins": storage.list_mood_checkins(100, DB_PATH)}
+
+
+@app.delete("/api/mood-checkins/{checkin_id}", status_code=204, response_class=Response)
+async def remove_mood_checkin(checkin_id: str) -> Response:
+    if not storage.delete_mood_checkin(checkin_id, DB_PATH):
+        raise HTTPException(status_code=404, detail="Check-in not found")
+    return Response(status_code=204)
+
+
+@app.get("/api/profile")
+async def get_profile() -> dict[str, Any]:
+    return storage.get_profile_preferences(DB_PATH)
+
+
+@app.put("/api/profile")
+async def put_profile(payload: ProfilePreferences) -> dict[str, Any]:
+    return storage.save_profile_preferences(payload.default_skill, payload.animate_breathing, DB_PATH)
 
 
 @app.get("/api/support")
@@ -352,6 +408,8 @@ async def crisis_support() -> dict[str, str]:
     return {
         "title": "Crisis support",
         "message": "If you may be in immediate danger, contact your local emergency services or a trusted person now. This coursework demo is not monitored and cannot provide emergency support.",
+        "us_988": "In the United States and territories, call or text 988, or use the official 988 Lifeline chat.",
+        "us_988_url": "https://988lifeline.org/get-help/",
     }
 
 
