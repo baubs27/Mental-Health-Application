@@ -2,6 +2,25 @@
 
 IST 402 — Assignment 3
 
+## Assignment submission index
+
+**Repository:** [Mental Health Application](https://github.com/baubs27/Mental-Health-Application)
+
+**Submitted application version:** [`e78148b271c0e2d263fe4c70ef44e82c8fada0d5`](https://github.com/baubs27/Mental-Health-Application/commit/e78148b271c0e2d263fe4c70ef44e82c8fada0d5) on `main`. This commit identifies the application version described below; subsequent commits update this submission index and its reports.
+
+Upload one `report.md` file for each part. The reports and evidence currently in this repository are:
+
+| Part | `report.md` to upload | Version commit | Design and verification evidence | Recording |
+| --- | --- | --- | --- | --- |
+| **3.1 — Design proposal** | [`docs/report.md`](docs/report.md) | [`93e06e613ef5ec53768c2d61caec3c305739fe50`](https://github.com/baubs27/Mental-Health-Application/commit/93e06e613ef5ec53768c2d61caec3c305739fe50) | [Design proposal and R/D rationale](docs/report.md); [implemented design map](docs/design-pipeline.md) | [Supplied expected-demo reference](docs/recordings/expected_demo.mov). This is a design reference, not a recording of this app. |
+| **3.2 — Working application** | [`docs/part-3.2/report.md`](docs/part-3.2/report.md) | [`e78148b271c0e2d263fe4c70ef44e82c8fada0d5`](https://github.com/baubs27/Mental-Health-Application/commit/e78148b271c0e2d263fe4c70ef44e82c8fada0d5) | [Design and implementation notes](docs/design-pipeline.md); [verification evidence](docs/verification.md); [Live Audio notes](docs/voice-audio.md) | [Supplied expected-demo reference](docs/recordings/expected_demo.mov). No recording of the working app is committed yet. |
+
+**What is complete:** Part 3.1 documents the proposed skill experience, model role, data, user control, and links to the research findings. Part 3.2 provides a Vue/FastAPI/SQLite coursework prototype with STOP, paced breathing, open-ended chat, saved local history, and a crisis route independent of the model.
+
+**What the evidence shows:** The verification notes record a successful frontend build, browser walkthrough, deterministic chat reply, SQLite persistence/retrieval, and database integrity check. They also distinguish demo-mode checks from live-provider behavior.
+
+**Still unresolved:** No app walkthrough recording is in the repository; live text/voice provider behavior is not verified; voice, data deletion/retention, and crisis-resource localization need further review. The app is a fictional coursework prototype, not a support or clinical service.
+
 ## Purpose and scope
 
 A local coursework prototype for a small collection of optional skills. It
