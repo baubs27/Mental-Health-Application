@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 import re
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from dotenv import load_dotenv
@@ -13,7 +14,8 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from prompts import DELEGATED_INSTRUCTIONS, LIVE_INSTRUCTIONS
+import storage
+from prompts import DELEGATED_INSTRUCTIONS, LIVE_INSTRUCTIONS, STOP_CHAT_INSTRUCTIONS
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -21,8 +23,17 @@ LIVE_API_URL = "https://api.openai.com/v1/live/sessions"
 MAX_SDP_CHARACTERS = 64 * 1024
 MAX_REQUEST_BYTES = MAX_SDP_CHARACTERS + 1024
 PROVIDER_TIMEOUT_SECONDS = 15.0
+TEXT_MODEL_TIMEOUT_SECONDS = 12.0
+DB_PATH = storage.DEFAULT_DB_PATH
+RESPONSES_API_URL = "https://api.openai.com/v1/responses"
 
-app = FastAPI(title="Mental Health Skills App API", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    storage.initialize(DB_PATH)
+    yield
+
+
+app = FastAPI(title="Mental Health Skills App API", version="0.2.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -37,9 +48,19 @@ class VoiceOffer(BaseModel):
     sdp_offer: str = Field(min_length=1, max_length=MAX_SDP_CHARACTERS)
 
 
-class TextMessage(BaseModel):
+class StepUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    message: str = Field(min_length=1, max_length=1000)
+    step: int = Field(ge=1, le=4)
+
+
+class FinishRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["completed", "left"]
+
+
+class SessionMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(min_length=1, max_length=2000)
 
 
 def configured_duration() -> int:
@@ -53,6 +74,73 @@ def configured_duration() -> int:
     return seconds
 
 
+def model_mode() -> str:
+    mode = os.getenv("MODEL_MODE", "demo").strip().casefold()
+    return mode if mode in {"demo", "openai", "fail"} else "demo"
+
+
+def demo_model_reply(message: str) -> str:
+    """Deterministic, explicitly labeled model stand-in for no-key demos."""
+    normalized = message.casefold()
+    if "observe" in normalized:
+        return "The Observe step means noticing what is happening inside you and around you, without having to judge or fix it. You choose what, if anything, to do next."
+    if "proceed" in normalized:
+        return "Proceed mindfully means choosing one next action that fits your priorities. It is fine to pause or choose a different action."
+    if "step back" in normalized or "take a step" in normalized:
+        return "Take a step back creates a small pause before reacting. You might stop typing, unclench your hands, or simply wait a moment; choose what feels useful."
+    if "stop" in normalized:
+        return "STOP is a short sequence: Stop; Take a step back; Observe inside and outside; Proceed mindfully. You can skip any part or leave whenever you want."
+    return "I can explain the reviewed STOP steps: Stop; Take a step back; Observe what is happening inside and outside; Proceed mindfully. Which step would you like to explore?"
+
+
+async def generate_model_reply(message: str, history: list[dict[str, str]]) -> tuple[str, str]:
+    mode = model_mode()
+    if mode == "fail":
+        raise HTTPException(status_code=502, detail="The model request failed. Your message is saved without a reply.")
+    if mode == "demo":
+        return demo_model_reply(message), "demo"
+
+    key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not key:
+        raise HTTPException(status_code=503, detail="The live model is not configured. Your message is saved without a reply.")
+    payload = {
+        "model": os.getenv("OPENAI_TEXT_MODEL", "gpt-6-luna").strip(),
+        "instructions": STOP_CHAT_INSTRUCTIONS,
+        "input": history[-8:],
+        "max_output_tokens": 180,
+        "store": False,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=TEXT_MODEL_TIMEOUT_SECONDS) as client:
+            response = await client.post(
+                RESPONSES_API_URL,
+                headers={"Authorization": f"Bearer {key}"},
+                json=payload,
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="The model request timed out. Your message is saved without a reply.") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="The model request failed. Your message is saved without a reply.") from exc
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail="The model request failed. Your message is saved without a reply.")
+    try:
+        data = response.json()
+        pieces = [
+            part["text"]
+            for item in data.get("output", [])
+            if item.get("type") == "message"
+            for part in item.get("content", [])
+            if part.get("type") == "output_text" and isinstance(part.get("text"), str)
+        ]
+        reply = "\n".join(pieces).strip()
+        if not reply or len(reply) > 4000:
+            raise ValueError("Missing or oversized model reply")
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise HTTPException(status_code=502, detail="The model returned an unusable response. Your message is saved without a reply.") from exc
+    return reply, "openai"
+
+
 def voice_configuration() -> dict[str, Any]:
     return {
         "configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
@@ -64,6 +152,15 @@ def voice_configuration() -> dict[str, Any]:
 async def get_voice_config() -> dict[str, Any]:
     """Report availability and the duration cap without exposing configuration."""
     return voice_configuration()
+
+
+@app.get("/api/app/config")
+async def get_app_config() -> dict[str, Any]:
+    return {
+        "model_mode": model_mode(),
+        "text_model": os.getenv("OPENAI_TEXT_MODEL", "gpt-6-luna").strip() if model_mode() == "openai" else None,
+        "voice_configured": voice_configuration()["configured"],
+    }
 
 
 @app.post("/api/voice/sessions")
@@ -185,23 +282,77 @@ async def hangup_voice_session(session_id: str) -> Response:
     return Response(status_code=204)
 
 
-@app.post("/api/chat")
-async def text_chat(payload: TextMessage) -> dict[str, str]:
-    """A reviewed, local explanation keeps text help usable without Live Audio."""
-    normalized = payload.message.strip().casefold()
-    if not normalized:
+@app.post("/api/exercises", status_code=201)
+async def create_exercise() -> dict[str, Any]:
+    """Start and persist one anonymous STOP practice session."""
+    return storage.begin_session(DB_PATH)
+
+
+@app.patch("/api/exercises/{session_id}/step")
+async def update_exercise_step(session_id: str, payload: StepUpdate) -> dict[str, Any]:
+    session = storage.get_session(session_id, DB_PATH)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session["status"] != "in_progress":
+        raise HTTPException(status_code=409, detail="Session has already ended")
+    if payload.step not in {session["current_step"], session["current_step"] + 1}:
+        raise HTTPException(status_code=409, detail="Complete the current step before moving ahead")
+    storage.set_step(session_id, payload.step, DB_PATH)
+    return {"session_id": session_id, "current_step": payload.step}
+
+
+@app.post("/api/exercises/{session_id}/messages")
+async def exercise_message(session_id: str, payload: SessionMessage) -> dict[str, str]:
+    """Persist a user turn, ask the selected model, and save only a real reply."""
+    message = payload.message.strip()
+    if not message:
         raise HTTPException(status_code=422, detail="Enter a question")
-    reply = (
-        "STOP is a four-step skill: Stop; take a step back; observe what is happening "
-        "inside and around you; then proceed mindfully. This coursework demo can "
-        "explain the reviewed steps, but it does not interpret personal situations."
-    )
-    if "crisis" in normalized or "emergency" in normalized:
-        reply = (
-            "Crisis support is available from the separate support control. This demo "
-            "does not monitor conversations or provide emergency support."
-        )
-    return {"reply": reply}
+    try:
+        message_id = storage.add_user_message(session_id, message, DB_PATH)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="This exercise has ended") from exc
+    rows = storage.get_model_history(session_id, DB_PATH)
+    model_input = [{"role": row["role"], "content": row["content"]} for row in rows]
+    try:
+        reply, source = await generate_model_reply(message, model_input)
+        storage.add_assistant_message(session_id, reply, source, DB_PATH)
+    except HTTPException as exc:
+        storage.mark_request_failed(message_id, DB_PATH)
+        detail = exc.detail if isinstance(exc.detail, str) else "The model request failed. Your message is saved without a reply."
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"message": detail, "message_id": message_id},
+        ) from exc
+    except Exception as exc:
+        storage.mark_request_failed(message_id, DB_PATH)
+        raise HTTPException(
+            status_code=502,
+            detail={"message": "The model request failed. Your message is saved without a reply.", "message_id": message_id},
+        ) from exc
+    return {"message_id": message_id, "reply": reply, "model_source": source}
+
+
+@app.post("/api/exercises/{session_id}/finish")
+async def finish_exercise(session_id: str, payload: FinishRequest) -> dict[str, Any]:
+    """Record completion/early exit and the server-measured elapsed seconds."""
+    session = storage.finish_session(session_id, payload.status, DB_PATH)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
+@app.get("/api/history")
+async def get_history() -> dict[str, Any]:
+    return {"sessions": storage.list_history(10, DB_PATH)}
+
+
+@app.get("/api/support")
+async def crisis_support() -> dict[str, str]:
+    """Static support content that remains available when the model is down."""
+    return {
+        "title": "Crisis support",
+        "message": "If you may be in immediate danger, contact your local emergency services or a trusted person now. This coursework demo is not monitored and cannot provide emergency support.",
+    }
 
 
 @app.get("/health")

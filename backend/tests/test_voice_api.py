@@ -32,8 +32,11 @@ class FakeClient:
 
 
 @pytest.fixture
-def client():
-    return TestClient(main.app)
+def client(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "DB_PATH", tmp_path / "app.sqlite3")
+    monkeypatch.setenv("MODEL_MODE", "demo")
+    with TestClient(main.app) as test_client:
+        yield test_client
 
 
 def test_config_reports_only_configured_status_and_duration(client, monkeypatch):
@@ -111,11 +114,88 @@ def test_malformed_provider_response_is_rejected(client, monkeypatch):
     assert response.json()["detail"] == "Voice provider returned an invalid response"
 
 
-def test_text_chat_remains_available_without_voice_configuration(client, monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    response = client.post("/api/chat", json={"message": "What is STOP?"})
+def test_demo_model_contribution_and_conversation_are_persisted(client):
+    session = client.post("/api/exercises").json()
+    assert session["status"] == "in_progress"
+    response = client.post(
+        f"/api/exercises/{session['session_id']}/messages",
+        json={"message": "What does Observe mean?"},
+    )
     assert response.status_code == 200
-    assert "four-step skill" in response.json()["reply"]
+    assert response.json()["model_source"] == "demo"
+    assert "noticing" in response.json()["reply"]
+    history = client.get("/api/history").json()["sessions"][0]
+    assert [item["role"] for item in history["messages"]] == ["user", "assistant"]
+    assert history["messages"][1]["model_source"] == "demo"
+
+
+def test_model_failure_saves_user_message_without_fabricating_reply(client, monkeypatch):
+    monkeypatch.setenv("MODEL_MODE", "fail")
+    session = client.post("/api/exercises").json()
+    response = client.post(
+        f"/api/exercises/{session['session_id']}/messages",
+        json={"message": "Please explain Observe"},
+    )
+    assert response.status_code == 502
+    assert "saved without a reply" in response.json()["detail"]["message"]
+    history = client.get("/api/history").json()["sessions"][0]
+    assert len(history["messages"]) == 1
+    assert history["messages"][0]["request_status"] == "failed"
+    assert history["messages"][0]["role"] == "user"
+
+
+def test_missing_live_model_configuration_fails_without_api_call(client, monkeypatch):
+    monkeypatch.setenv("MODEL_MODE", "openai")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    session = client.post("/api/exercises").json()
+    response = client.post(
+        f"/api/exercises/{session['session_id']}/messages",
+        json={"message": "Explain the first step"},
+    )
+    assert response.status_code == 503
+    history = client.get("/api/history").json()["sessions"][0]
+    assert history["messages"][0]["request_status"] == "failed"
+    assert len(history["messages"]) == 1
+
+
+def test_step_order_is_checked_and_saved(client):
+    session = client.post("/api/exercises").json()
+    session_id = session["session_id"]
+    skipped = client.patch(f"/api/exercises/{session_id}/step", json={"step": 3})
+    assert skipped.status_code == 409
+    advanced = client.patch(f"/api/exercises/{session_id}/step", json={"step": 2})
+    assert advanced.status_code == 200
+    assert client.get("/api/history").json()["sessions"][0]["current_step"] == 2
+
+
+def test_early_exit_records_duration_and_transcript(client, monkeypatch):
+    moments = iter([
+        "2026-10-22T12:00:00.000Z",
+        "2026-10-22T12:00:00.100Z",
+        "2026-10-22T12:00:00.200Z",
+        "2026-10-22T12:00:07.900Z",
+    ])
+    monkeypatch.setattr(main.storage, "utc_now", lambda: next(moments))
+    session = client.post("/api/exercises").json()
+    response = client.post(
+        f"/api/exercises/{session['session_id']}/messages",
+        json={"message": "I want to stop here"},
+    )
+    assert response.status_code == 200
+    ended = client.post(f"/api/exercises/{session['session_id']}/finish", json={"status": "left"})
+    assert ended.status_code == 200
+    assert ended.json()["status"] == "left"
+    assert ended.json()["duration_seconds"] == 7
+    history = client.get("/api/history").json()["sessions"][0]
+    assert history["duration_seconds"] == 7
+    assert len(history["messages"]) == 2
+
+
+def test_crisis_support_route_is_static_and_independent(client, monkeypatch):
+    monkeypatch.setenv("MODEL_MODE", "fail")
+    response = client.get("/api/support")
+    assert response.status_code == 200
+    assert "local emergency services" in response.json()["message"]
 
 
 def test_hangup_rejects_invalid_session_identifier(client):

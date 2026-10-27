@@ -5,9 +5,7 @@
 This increment adds a small Vue chat shell because the Assignment 3 starter did
 not contain the existing Vue/FastAPI chat assumed by the activity. It uses the
 STOP skill selected in `docs/report.md` and the accessibility principles already
-listed in `README.md`. It does not add the full STOP timer, SQLite history, RAG,
-profiles, or saved chat. Text help remains available as a fixed, reviewed STOP
-explanation when voice is unavailable.
+listed in `README.md`. This voice increment itself does not persist audio/transcripts or implement the complete timed STOP interaction. The later Part 3.2 app has a separate STOP text exercise, SQLite session/message history, and text-model path; see `docs/design-pipeline.md` and `docs/verification.md`. Live Audio remains optional and separate.
 
 The prototype is for fictional coursework scenarios. It does not diagnose,
 provide therapy or treatment, give medical advice, monitor people, or provide
@@ -137,7 +135,7 @@ provider account.
 ## Verification status
 
 - The nine frontend lifecycle mocks passed with Node's built-in test runner.
-- All eleven FastAPI provider/API mocks passed with pytest. The tests use
+- All sixteen FastAPI API tests passed with pytest. The tests use
   mocked provider responses and do not contact OpenAI.
 - The Vite production build passed. JavaScript syntax checks and Python syntax
   compilation also passed.
