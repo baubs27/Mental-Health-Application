@@ -6,8 +6,8 @@ The local prototype now includes paced breathing, STOP, optional mood
 check-ins, monthly history summary, explicit profile preferences, chat/voice
 entry points, and persistent crisis support. The Vue app is available on
 `http://127.0.0.1:5173/` and FastAPI was refreshed on `http://127.0.0.1:8000/`.
-The previously authorized publishing destination is the Mental-Health-Application
-repository linked by the user.
+This update is published to the user's Mental-Health-Application repository on
+branch `main` at `1b8062fcddc4c765adbb010d2fe003e68ff3606a`.
 
 Read `README.md`, `docs/design-pipeline.md`, and `docs/verification.md` before
 continuing. The video is treated as a visual/feature reference. The screening
