@@ -2,25 +2,22 @@
 
 ## State
 
-Part 3.2 STOP vertical slice is implemented in this folder. Vue and FastAPI run
-locally; local live text mode is configured through ignored `backend/.env`.
-SQLite evidence and manual browser notes are in `docs/verification.md`.
-Architecture, scope, and open design questions are in `docs/design-pipeline.md`
-and `docs/report.md`.
+Part 3.2 STOP vertical slice is implemented in this folder and published to
+the authorized GitHub repository on `main`. Vue and FastAPI run locally; live
+text mode uses ignored `backend/.env`. SQLite evidence and browser verification
+are in `docs/verification.md`. Architecture and remaining product questions
+are in `docs/design-pipeline.md` and `docs/report.md`.
 
 ## Safety and privacy
 
 Never copy `backend/.env` or `data/app.sqlite3` to GitHub. Both are ignored.
-The key was provided in chat and should be rotated after use. Do not include it
-in code, notes, logs, or browser artifacts. App scope is fictional coursework,
-not therapy or a monitored service.
+The API key was shared in chat; rotate it before further use. Do not include it
+in code, notes, logs, or browser artifacts. This is fictional coursework, not
+therapy or a monitored service.
 
-## Next actions
+## Remaining work
 
-1. Run frontend tests/build and backend pytest after any implementation change.
-2. Inspect `git status` and the staged file list; exclude credentials, runtime
-   SQLite data, dependency folders, and build output.
-3. Upload the Part 3.2 source/docs to the already-authorized GitHub repository.
-4. If continuing after Part 3.2, resolve open design questions before claiming
-   the broader proposal is implemented; pause/skip/personalization/RAG remain
-   unfinished.
+The Part 3.2 vertical slice is complete. If extending it, resolve the open
+design questions first. Pause/skip controls, personalization settings, data
+deletion/retention controls, crisis localization, optional self-report, and RAG
+remain unfinished. Live voice was not tested against a provider.
