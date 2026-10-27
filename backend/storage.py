@@ -82,6 +82,26 @@ def initialize(db_path: Path = DEFAULT_DB_PATH) -> None:
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                session_id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL UNIQUE
+                    REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                message_id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL
+                    REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+                session_id TEXT NOT NULL
+                    REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+                role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+                content TEXT NOT NULL CHECK (length(content) BETWEEN 1 AND 2000),
+                request_status TEXT NOT NULL CHECK (request_status IN ('complete', 'failed')),
+                model_source TEXT CHECK (model_source IS NULL OR model_source IN ('demo', 'openai')),
+                created_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS ix_sessions_started_at
                 ON skill_sessions(started_at DESC);
             CREATE INDEX IF NOT EXISTS ix_messages_conversation_time
@@ -90,6 +110,8 @@ def initialize(db_path: Path = DEFAULT_DB_PATH) -> None:
                 ON breathing_sessions(started_at DESC);
             CREATE INDEX IF NOT EXISTS ix_checkins_created_at
                 ON mood_checkins(created_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_chat_messages_time
+                ON chat_messages(session_id, created_at, message_id);
             """
         )
 
@@ -329,3 +351,82 @@ def save_profile_preferences(default_skill: str, animate_breathing: bool, db_pat
             (default_skill, int(animate_breathing), updated_at),
         )
     return {"default_skill": default_skill, "animate_breathing": animate_breathing}
+
+
+def begin_chat_session(db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
+    session_id = str(uuid4())
+    conversation_id = str(uuid4())
+    created_at = utc_now()
+    with connect(db_path) as db:
+        db.execute("INSERT INTO conversations (conversation_id, created_at) VALUES (?, ?)",
+                   (conversation_id, created_at))
+        db.execute("INSERT INTO chat_sessions (session_id, conversation_id, created_at) VALUES (?, ?, ?)",
+                   (session_id, conversation_id, created_at))
+    return {"session_id": session_id, "conversation_id": conversation_id, "created_at": created_at}
+
+
+def add_chat_user_message(session_id: str, content: str, db_path: Path = DEFAULT_DB_PATH) -> str:
+    message_id = str(uuid4())
+    created_at = utc_now()
+    with connect(db_path) as db:
+        session = db.execute("SELECT conversation_id FROM chat_sessions WHERE session_id = ?",
+                             (session_id,)).fetchone()
+        if not session:
+            raise ValueError("Chat session not found")
+        db.execute(
+            """INSERT INTO chat_messages
+               (message_id, conversation_id, session_id, role, content, request_status, created_at)
+               VALUES (?, ?, ?, 'user', ?, 'complete', ?)""",
+            (message_id, session["conversation_id"], session_id, content, created_at),
+        )
+    return message_id
+
+
+def mark_chat_request_failed(message_id: str, db_path: Path = DEFAULT_DB_PATH) -> None:
+    with connect(db_path) as db:
+        db.execute("UPDATE chat_messages SET request_status = 'failed' WHERE message_id = ? AND role = 'user'",
+                   (message_id,))
+
+
+def get_chat_model_history(session_id: str, db_path: Path = DEFAULT_DB_PATH) -> list[sqlite3.Row]:
+    with connect(db_path) as db:
+        return db.execute(
+            """SELECT role, content FROM chat_messages
+               WHERE session_id = ? AND request_status = 'complete'
+               ORDER BY rowid DESC LIMIT 8""",
+            (session_id,),
+        ).fetchall()[::-1]
+
+
+def add_chat_assistant_message(
+    session_id: str, content: str, model_source: str, db_path: Path = DEFAULT_DB_PATH
+) -> str:
+    message_id = str(uuid4())
+    created_at = utc_now()
+    with connect(db_path) as db:
+        session = db.execute("SELECT conversation_id FROM chat_sessions WHERE session_id = ?",
+                             (session_id,)).fetchone()
+        if not session:
+            raise ValueError("Chat session not found")
+        db.execute(
+            """INSERT INTO chat_messages
+               (message_id, conversation_id, session_id, role, content, request_status, model_source, created_at)
+               VALUES (?, ?, ?, 'assistant', ?, 'complete', ?, ?)""",
+            (message_id, session["conversation_id"], session_id, content, model_source, created_at),
+        )
+    return message_id
+
+
+def list_chat_sessions(limit: int = 10, db_path: Path = DEFAULT_DB_PATH) -> list[dict[str, Any]]:
+    with connect(db_path) as db:
+        sessions = db.execute("SELECT * FROM chat_sessions ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        result = []
+        for session in sessions:
+            item = dict(session)
+            item["messages"] = [dict(message) for message in db.execute(
+                """SELECT message_id, role, content, request_status, model_source, created_at
+                   FROM chat_messages WHERE session_id = ? ORDER BY rowid LIMIT 100""",
+                (session["session_id"],),
+            ).fetchall()]
+            result.append(item)
+        return result

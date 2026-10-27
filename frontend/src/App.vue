@@ -13,7 +13,14 @@ const navItems = [
   { id: 'chat', label: 'Chat', icon: '♡' }, { id: 'history', label: 'History', icon: '◷' },
   { id: 'profile', label: 'Profile', icon: '○' }, { id: 'support', label: 'Crisis', icon: '!' },
 ]
-const view = ref(location.hash === '#support' ? 'support' : 'home')
+const chatStarters = [
+  'I’ve had a stressful day.',
+  'I’m not sure where to start.',
+  'Can you help me think through a situation?',
+  'I just want to talk.',
+]
+const initialRoute = location.hash.slice(1)
+const view = ref(initialRoute === 'support' ? 'support' : navItems.some(item => item.id === initialRoute) ? initialRoute : 'home')
 const exercise = ref(null)
 const breathingSession = ref(null)
 const currentStep = ref(1)
@@ -22,6 +29,13 @@ const breathingSeconds = ref(0)
 const breathingPhase = ref('Breathe in')
 const exerciseMessages = ref([])
 const question = ref('')
+const chatSessions = ref([])
+const activeChatSessionId = ref(null)
+const chatMessages = ref([])
+const chatText = ref('')
+const chatSending = ref(false)
+const chatError = ref('')
+const savedChats = ref([])
 const sending = ref(false)
 const starting = ref(false)
 const exerciseError = ref('')
@@ -63,10 +77,42 @@ async function loadHistory() {
     const result = await response.json()
     historyItems.value = result.sessions || []
     checkins.value = result.checkins || []
+    savedChats.value = result.chats || []
     historyError.value = ''
   } catch {
     historyError.value = 'Your saved activity is temporarily unavailable. You can still use the practices.'
   }
+}
+async function loadChatSessions() {
+  try {
+    const response = await fetch('/api/chat/sessions')
+    if (!response.ok) throw new Error()
+    const result = await response.json()
+    chatSessions.value = result.sessions || []
+    const selected = chatSessions.value.find(item => item.session_id === activeChatSessionId.value)
+      || chatSessions.value[0]
+    if (selected) {
+      activeChatSessionId.value = selected.session_id
+      chatMessages.value = selected.messages || []
+    } else if (!activeChatSessionId.value) chatMessages.value = []
+  } catch { chatError.value = 'Saved conversations are temporarily unavailable.' }
+}
+function chooseChatSession(id) {
+  const session = chatSessions.value.find(item => item.session_id === id)
+  if (!session) return
+  activeChatSessionId.value = id
+  chatMessages.value = session.messages || []
+  chatError.value = ''
+}
+function startNewConversation() {
+  activeChatSessionId.value = null
+  chatMessages.value = []
+  chatText.value = ''
+  chatError.value = ''
+}
+function chatTitle(session) {
+  const first = session.messages?.find(item => item.role === 'user')?.content?.trim()
+  return first ? (first.length > 48 ? `${first.slice(0, 48)}…` : first) : `Conversation · ${formatDate(session.created_at)}`
 }
 async function loadProfile() {
   try {
@@ -157,6 +203,46 @@ async function sendQuestion() {
     exerciseError.value = 'The request did not reach the app. Check your connection; no reply was invented.'
   } finally { sending.value = false; void loadHistory() }
 }
+async function sendChatMessage() {
+  const message = chatText.value.trim()
+  if (!message || chatSending.value) return
+  chatText.value = ''
+  chatSending.value = true
+  chatError.value = ''
+  chatMessages.value.push({ role: 'user', content: message, request_status: 'complete' })
+  const localIndex = chatMessages.value.length - 1
+  let messageRequestReachedServer = false
+  try {
+    if (!activeChatSessionId.value) {
+      const start = await fetch('/api/chat/sessions', { method: 'POST' })
+      if (!start.ok) throw new Error('A conversation could not be started. Please retry.')
+      const session = await start.json()
+      activeChatSessionId.value = session.session_id
+    }
+    const response = await fetch(`/api/chat/sessions/${activeChatSessionId.value}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    })
+    messageRequestReachedServer = true
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      chatMessages.value[localIndex].request_status = 'failed'
+      chatError.value = result.detail?.message || result.detail || 'The AI could not reply. Your message is saved without a response.'
+      return
+    }
+    chatMessages.value.push({ role: 'assistant', content: result.reply, request_status: 'complete', model_source: result.model_source })
+  } catch (error) {
+    chatMessages.value[localIndex].request_status = 'failed'
+    chatError.value = error.message || 'The conversation could not reach the app. You can try again.'
+  } finally {
+    chatSending.value = false
+    if (messageRequestReachedServer) {
+      void loadChatSessions()
+      void loadHistory()
+    }
+  }
+}
 async function finishExercise(status, { keepView = false } = {}) {
   if (!exercise.value || finished.value) return true
   exerciseError.value = ''
@@ -239,6 +325,7 @@ async function navigate(id) {
   view.value = id
   location.hash = id === 'home' ? '' : id
   await loadHistory()
+  if (id === 'chat') await loadChatSessions()
 }
 function returnHome() { void navigate('home') }
 function onHashChange() {
@@ -266,7 +353,7 @@ onMounted(async () => {
   try { const response = await fetch('/api/voice/config'); if (response.ok) voiceConfig.value = await response.json() }
   catch { voiceConfig.value = { configured: false, max_session_seconds: 300 } }
   voiceController = new VoiceSessionController({ audioElement: remoteAudio.value, onState: ({ state, error }) => { voiceState.value = state; voiceError.value = error }, onPlaybackBlocked: blocked => { playbackBlocked.value = blocked } })
-  await Promise.all([loadHistory(), loadProfile()])
+  await Promise.all([loadHistory(), loadProfile(), loadChatSessions()])
 })
 onBeforeUnmount(() => {
   window.removeEventListener('hashchange', onHashChange)
@@ -292,7 +379,7 @@ onBeforeUnmount(() => {
 
     <template v-else-if="view === 'exercise' && exercise">
       <section class="card exercise-card"><div class="exercise-topline"><div><p class="eyebrow">STOP · Step {{ currentStep }} of 4</p><h1>{{ activeStep.title }}</h1></div><div class="timer" role="timer" aria-label="Practice duration">{{ elapsedLabel }}</div></div><div class="progress-track" role="progressbar" :aria-valuenow="currentStep" aria-valuemin="1" aria-valuemax="4" :aria-label="`Step ${currentStep} of 4`"><span :style="{ width: `${currentStep * 25}%` }"></span></div><p class="step-copy">{{ activeStep.body }}</p><div class="exercise-actions"><button class="button primary" type="button" @click="goToNextStep">{{ currentStep === 4 ? 'Complete STOP' : 'Continue' }}</button><button class="button quiet" type="button" @click="leaveExercise">Leave practice</button></div><p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p></section>
-      <section class="card model-card"><div class="section-heading"><div><p class="eyebrow">Optional model help</p><h2>Ask about a STOP step</h2></div><span class="tag">{{ modelBadge }}</span></div><p class="small-note">The model explains the reviewed skill; it does not decide what you should do. Messages are saved locally. In live mode, your question and recent conversation are sent to OpenAI.</p><div class="chat-log" aria-live="polite" aria-label="Practice conversation"><article v-for="(item, index) in exerciseMessages" :key="index" class="message" :class="item.role"><p class="message-label">{{ item.role === 'user' ? 'You' : modelLabel(item.model_source) }}</p><p>{{ item.content }}</p><p v-if="item.request_status === 'failed'" class="failed-note">No model reply was saved. You can retry or continue the practice.</p></article></div><form class="chat-form" @submit.prevent="sendQuestion"><label class="sr-only" for="exercise-question">Question about STOP</label><input id="exercise-question" v-model="question" maxlength="2000" autocomplete="off" placeholder="What does Observe mean?" :disabled="sending || !exerciseActive"><button class="button secondary" type="submit" :disabled="sending || !question.trim()">{{ sending ? 'Asking…' : 'Ask' }}</button></form><p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p></section>
+      <section class="card model-card"><div class="section-heading"><div><p class="eyebrow">Optional AI conversation</p><h2>Talk about what’s on your mind</h2></div><span class="tag">{{ modelBadge }}</span></div><p class="small-note">You can ask about STOP, your day, or something else. Share only what you’re comfortable sharing. Messages are saved locally; in live mode your question and recent conversation are sent to OpenAI.</p><div class="chat-log" aria-live="polite" aria-label="Practice conversation"><article v-for="(item, index) in exerciseMessages" :key="index" class="message" :class="item.role"><p class="message-label">{{ item.role === 'user' ? 'You' : modelLabel(item.model_source) }}</p><p>{{ item.content }}</p><p v-if="item.request_status === 'failed'" class="failed-note">No reply was saved. You can try again or continue the practice.</p></article></div><form class="chat-form" @submit.prevent="sendQuestion"><label class="sr-only" for="exercise-question">Message the AI</label><input id="exercise-question" v-model="question" maxlength="2000" autocomplete="off" placeholder="What has been on your mind?" :disabled="sending || !exerciseActive"><button class="button secondary" type="submit" :disabled="sending || !question.trim()">{{ sending ? 'Sending…' : 'Send' }}</button></form><p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p></section>
     </template>
 
     <template v-else-if="view === 'breathing' && breathingSession">
@@ -306,14 +393,88 @@ onBeforeUnmount(() => {
       <section class="card checkin-card"><div class="section-heading"><div><p class="eyebrow">Optional · your words for yourself</p><h2>How are you feeling?</h2></div><span aria-hidden="true">☀</span></div><p>Only you choose a check-in. The app does not infer how you feel.</p><div class="mood-options"><button v-for="mood in [{ id: 'low', text: 'A little low', icon: '☁' }, { id: 'steady', text: 'Somewhere in the middle', icon: '◒' }, { id: 'good', text: 'Doing okay', icon: '☀' }]" :key="mood.id" type="button" class="mood-button" :aria-pressed="moodChoice === mood.id" @click="moodChoice = mood.id"><span>{{ mood.icon }}</span>{{ mood.text }}</button></div><div class="checkin-submit"><button class="button primary" type="button" :disabled="!moodChoice" @click="submitCheckin">Save check-in</button><button class="button quiet" type="button" @click="moodChoice = ''; moodMessage = 'No check-in saved.'">Skip</button></div><p v-if="moodMessage" class="small-note" role="status">{{ moodMessage }}</p></section>
       <section v-if="preferences.default_skill === 'paced_breathing'" class="card featured-practice"><div><p class="eyebrow">Your usual practice · 50 seconds</p><h2>Paced breathing</h2><p>Five gentle cycles: breathe in for four seconds, out for six. No hold.</p><button class="button primary start-button" type="button" :disabled="starting" @click="startBreathing">{{ starting ? 'Opening…' : 'Open practice' }}</button></div><div class="feature-orb" aria-hidden="true">breathe</div></section>
       <section v-else class="card featured-practice"><div><p class="eyebrow">Your usual practice · four short steps</p><h2>STOP</h2><p>Pause, notice what is happening, and choose one small next action.</p><button class="button primary start-button" type="button" :disabled="starting" @click="startExercise">{{ starting ? 'Opening…' : 'Open practice' }}</button></div><div class="feature-orb leaf-orb" aria-hidden="true">✿</div></section>
-      <section class="card quick-links"><p class="eyebrow">Nice to explore</p><button type="button" @click="navigate('chat')"><span>♡</span><span><strong>Talk it through</strong><small>Ask about a reviewed skill</small></span><b>›</b></button><button type="button" @click="navigate('history')"><span>◷</span><span><strong>Your days</strong><small>Check-ins and practice history</small></span><b>›</b></button><button type="button" @click="navigate('activities')"><span>✿</span><span><strong>Activities</strong><small>Explore short guided practices</small></span><b>›</b></button></section>
+      <section class="card quick-links"><p class="eyebrow">Nice to explore</p><button type="button" @click="navigate('chat')"><span>♡</span><span><strong>Talk it through</strong><small>Start a conversation about anything</small></span><b>›</b></button><button type="button" @click="navigate('history')"><span>◷</span><span><strong>Your days</strong><small>Check-ins and practice history</small></span><b>›</b></button><button type="button" @click="navigate('activities')"><span>✿</span><span><strong>Activities</strong><small>Explore short guided practices</small></span><b>›</b></button></section>
     </template>
 
     <template v-else-if="view === 'activities'"><section class="page-heading"><p class="eyebrow">Choose what fits this moment</p><h1>Activities</h1><p>There is no required order. You can leave any practice at any time.</p></section><section class="card activity-card"><div class="activity-icon">◌</div><div><p class="eyebrow">50 seconds · gentle pacing</p><h2>Paced breathing</h2><p>Follow an optional visual cue for five comfortable inhale/exhale cycles. No breath holds.</p><button class="button primary" type="button" :disabled="starting" @click="startBreathing">{{ starting ? 'Opening…' : 'Start paced breathing' }}</button></div></section><section class="card activity-card"><div class="activity-icon warm">✦</div><div><p class="eyebrow">Four short steps</p><h2>STOP</h2><p>A brief pause, notice, and choice. You do not need to share or explain anything.</p><button class="button secondary" type="button" :disabled="starting" @click="startExercise">{{ starting ? 'Opening…' : 'Start STOP' }}</button></div></section><p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p></template>
 
-    <template v-else-if="view === 'chat'"><section class="page-heading"><p class="eyebrow">Optional conversation</p><h1>Talk it through</h1><p>Ask a question about STOP during a practice. The model explains the skill; it does not provide therapy or decide what you should do.</p></section><section class="card chat-entry"><p class="eyebrow">Skill questions</p><h2>Start a STOP practice to ask</h2><p>Your question and a short recent conversation are sent to the configured model only in live mode. You can complete STOP without chatting.</p><button class="button primary" type="button" :disabled="starting" @click="startExercise">Open STOP and ask a question</button></section><section class="card voice-card"><div class="section-heading"><div><p class="eyebrow">Optional · WebRTC voice</p><h2>Talk by voice</h2></div><span class="tag" :class="{ ready: voiceConfig?.configured }">{{ voiceConfig?.configured ? 'Configured' : 'Not configured' }}</span></div><p class="voice-description">Voice is separate from the saved text practice. This app does not save voice transcripts. Microphone access starts only when you choose Start voice.</p><div class="voice-controls"><button class="button secondary" type="button" :disabled="!canStartVoice" @click="startVoice">Start voice</button><button class="button secondary" type="button" :disabled="!canMuteVoice" @click="toggleVoiceMute">{{ voiceState === 'muted' ? 'Unmute microphone' : 'Mute microphone' }}</button><button class="button quiet" type="button" :disabled="!canEndVoice" @click="endVoice">End voice</button></div><p class="status" role="status" aria-live="polite">{{ voiceStatus }}</p><p v-if="voiceError" class="error-message" role="alert">{{ voiceError }}</p><p v-if="voiceConfig && !voiceConfig.configured" class="small-note">Voice requires a server-side key. No key belongs in the browser.</p><button v-if="playbackBlocked" class="button secondary" type="button" @click="voiceController?.enableAssistantAudio()">Enable assistant audio</button><audio ref="remoteAudio" autoplay playsinline class="audio-output" aria-label="Assistant voice audio" /></section></template>
+    <template v-else-if="view === 'chat'">
+      <section class="page-heading">
+        <p class="eyebrow">Optional AI conversation</p>
+        <h1>Talk about anything on your mind</h1>
+        <p>Start with a prompt or write your own. You can change topics at any time; you don’t need to follow a skill guide.</p>
+      </section>
+      <section class="card open-chat-card">
+        <div class="section-heading">
+          <div><p class="eyebrow">A conversation at your pace</p><h2>{{ activeChatSessionId ? 'Your conversation' : 'Where would you like to start?' }}</h2></div>
+          <button v-if="activeChatSessionId || chatMessages.length" class="button quiet refresh-button" type="button" @click="startNewConversation">New conversation</button>
+        </div>
+        <div v-if="!chatMessages.length" class="prompt-suggestions" aria-label="Conversation starters">
+          <p class="eyebrow">Not sure what to say? Try one of these</p>
+          <button v-for="prompt in chatStarters" :key="prompt" type="button" @click="chatText = prompt">{{ prompt }}</button>
+        </div>
+        <p class="small-note">This AI chat is not therapy or emergency support. Conversations save locally. In live mode, only this chat’s messages are sent to OpenAI; your profile and check-ins are not included. Share only what feels comfortable.</p>
+        <div class="chat-log open-chat-log" aria-live="polite" aria-label="Conversation messages">
+          <article v-for="(item, index) in chatMessages" :key="item.message_id || `${item.role}-${index}`" class="message" :class="item.role">
+            <p class="message-label">{{ item.role === 'user' ? 'You' : modelLabel(item.model_source) }}</p>
+            <p>{{ item.content }}</p>
+            <p v-if="item.request_status === 'failed'" class="failed-note">No reply was saved. You can send another message or try again.</p>
+          </article>
+          <p v-if="chatSending" class="status" role="status">Thinking…</p>
+        </div>
+        <form class="chat-form open-chat-form" @submit.prevent="sendChatMessage">
+          <label class="sr-only" for="open-chat-input">Your message</label>
+          <input id="open-chat-input" v-model="chatText" maxlength="2000" autocomplete="off" placeholder="What would you like to talk about?" :disabled="chatSending">
+          <button class="button primary" type="submit" :disabled="chatSending || !chatText.trim()">{{ chatSending ? 'Sending…' : 'Send' }}</button>
+        </form>
+        <p v-if="chatError" class="error-message" role="alert">{{ chatError }}</p>
+      </section>
+      <section v-if="chatSessions.length" class="card previous-chat-card">
+        <div class="section-heading"><div><p class="eyebrow">Saved locally</p><h2>Recent conversations</h2></div></div>
+        <button v-for="session in chatSessions" :key="session.session_id" class="conversation-choice" :class="{ selected: session.session_id === activeChatSessionId }" type="button" @click="chooseChatSession(session.session_id)">
+          <span>{{ chatTitle(session) }}</span><small>{{ formatDate(session.created_at) }} · {{ session.messages.length }} messages</small>
+        </button>
+      </section>
+      <section class="card voice-card">
+        <div class="section-heading"><div><p class="eyebrow">Optional · WebRTC voice</p><h2>Talk by voice</h2></div><span class="tag" :class="{ ready: voiceConfig?.configured }">{{ voiceConfig?.configured ? 'Configured' : 'Not configured' }}</span></div>
+        <p class="voice-description">Voice is a separate, opt-in conversation. This app does not save voice transcripts. Microphone access starts only when you choose Start voice.</p>
+        <div class="voice-controls">
+          <button class="button secondary" type="button" :disabled="!canStartVoice" @click="startVoice">Start voice</button>
+          <button class="button secondary" type="button" :disabled="!canMuteVoice" @click="toggleVoiceMute">{{ voiceState === 'muted' ? 'Unmute microphone' : 'Mute microphone' }}</button>
+          <button class="button quiet" type="button" :disabled="!canEndVoice" @click="endVoice">End voice</button>
+        </div>
+        <p class="status" role="status" aria-live="polite">{{ voiceStatus }}</p>
+        <p v-if="voiceError" class="error-message" role="alert">{{ voiceError }}</p>
+        <p v-if="voiceConfig && !voiceConfig.configured" class="small-note">Voice requires a server-side key. No key belongs in the browser.</p>
+        <button v-if="playbackBlocked" class="button secondary" type="button" @click="voiceController?.enableAssistantAudio()">Enable assistant audio</button>
+        <audio ref="remoteAudio" autoplay playsinline class="audio-output" aria-label="Assistant voice audio" />
+      </section>
+    </template>
 
-    <template v-else-if="view === 'history'"><section class="page-heading"><p class="eyebrow">Your activity · stored on this device</p><h1>Your days</h1><p>History is a record of what you chose to do. It does not measure improvement.</p></section><section class="card month-card"><p class="eyebrow">Your month in view</p><h2>{{ monthTitle }}</h2><div class="month-stats"><div><strong>{{ checkins.filter(item => new Date(item.created_at).getMonth() === new Date().getMonth()).length }}</strong><span>check-ins</span></div><div><strong>{{ monthSessions.length }}</strong><span>practices</span></div><div><strong>{{ monthMinutes }}</strong><span>minutes</span></div></div></section><section class="card history-card"><div class="section-heading"><div><p class="eyebrow">Practice and check-in log</p><h2>Recent activity</h2></div><button class="button quiet refresh-button" type="button" @click="loadHistory">Refresh</button></div><p v-if="historyError" class="error-message" role="alert">{{ historyError }}</p><p v-else-if="!historyItems.length && !checkins.length" class="empty-state">There is no activity saved yet. You can start whenever you like.</p><article v-for="item in historyItems" :key="item.session_id" class="history-entry"><div><strong>{{ sessionName(item) }}</strong><span class="history-meta">{{ formatDate(item.started_at) }} · {{ item.status }} · {{ formatDuration(item.duration_seconds) }}</span></div><details v-if="item.messages?.length"><summary>View saved conversation ({{ item.messages.length }} turns)</summary><article v-for="message in item.messages" :key="message.message_id" class="history-message"><strong>{{ message.role === 'user' ? 'You' : modelLabel(message.model_source) }}</strong><p>{{ message.content }}</p><small v-if="message.request_status === 'failed'">Request failed; no answer was saved.</small></article></details></article><div v-if="checkins.length" class="checkin-history"><p class="eyebrow">How you checked in</p><p v-for="item in checkins" :key="item.checkin_id" class="checkin-row"><span>{{ { low: 'A little low', steady: 'Somewhere in the middle', good: 'Doing okay' }[item.mood] }} · {{ formatDate(item.created_at) }}</span><button class="text-button" type="button" @click="deleteCheckin(item.checkin_id)">Remove</button></p></div></section></template>
+    <template v-else-if="view === 'history'">
+      <section class="page-heading"><p class="eyebrow">Your activity · stored on this device</p><h1>Your days</h1><p>History is a record of what you chose to do. It does not measure improvement.</p></section>
+      <section class="card month-card">
+        <p class="eyebrow">Your month in view</p><h2>{{ monthTitle }}</h2>
+        <div class="month-stats"><div><strong>{{ checkins.filter(item => new Date(item.created_at).getMonth() === new Date().getMonth()).length }}</strong><span>check-ins</span></div><div><strong>{{ monthSessions.length }}</strong><span>practices</span></div><div><strong>{{ monthMinutes }}</strong><span>minutes</span></div></div>
+      </section>
+      <section class="card history-card">
+        <div class="section-heading"><div><p class="eyebrow">Practice and check-in log</p><h2>Recent activity</h2></div><button class="button quiet refresh-button" type="button" @click="loadHistory">Refresh</button></div>
+        <p v-if="historyError" class="error-message" role="alert">{{ historyError }}</p>
+        <p v-else-if="!historyItems.length && !checkins.length && !savedChats.length" class="empty-state">There is no activity saved yet. You can start whenever you like.</p>
+        <article v-for="item in historyItems" :key="item.session_id" class="history-entry">
+          <div><strong>{{ sessionName(item) }}</strong><span class="history-meta">{{ formatDate(item.started_at) }} · {{ item.status }} · {{ formatDuration(item.duration_seconds) }}</span></div>
+          <details v-if="item.messages?.length"><summary>View saved conversation ({{ item.messages.length }} turns)</summary><article v-for="message in item.messages" :key="message.message_id" class="history-message"><strong>{{ message.role === 'user' ? 'You' : modelLabel(message.model_source) }}</strong><p>{{ message.content }}</p><small v-if="message.request_status === 'failed'">Request failed; no answer was saved.</small></article></details>
+        </article>
+        <div v-if="savedChats.length" class="checkin-history">
+          <p class="eyebrow">AI conversations</p>
+          <details v-for="session in savedChats" :key="session.session_id" class="saved-chat-entry">
+            <summary><span>{{ chatTitle(session) }}</span><small>{{ formatDate(session.created_at) }} · {{ session.messages.length }} messages</small></summary>
+            <article v-for="message in session.messages" :key="message.message_id" class="history-message"><strong>{{ message.role === 'user' ? 'You' : modelLabel(message.model_source) }}</strong><p>{{ message.content }}</p><small v-if="message.request_status === 'failed'">No reply was saved for this message.</small></article>
+          </details>
+        </div>
+        <div v-if="checkins.length" class="checkin-history"><p class="eyebrow">How you checked in</p><p v-for="item in checkins" :key="item.checkin_id" class="checkin-row"><span>{{ { low: 'A little low', steady: 'Somewhere in the middle', good: 'Doing okay' }[item.mood] }} · {{ formatDate(item.created_at) }}</span><button class="text-button" type="button" @click="deleteCheckin(item.checkin_id)">Remove</button></p></div>
+      </section>
+    </template>
 
     <template v-else-if="view === 'profile'"><section class="page-heading"><p class="eyebrow">Your choices stay yours</p><h1>Profile</h1><p>There is no account or diagnosis in this coursework demo. Settings are local to this installation.</p></section><section class="card profile-card"><p class="eyebrow">Practice preferences</p><label for="default-skill">Your usual practice</label><select id="default-skill" v-model="preferences.default_skill" @change="saveProfile"><option value="paced_breathing">Paced breathing</option><option value="STOP">STOP</option></select><p class="small-note">This only sets the featured practice. You can always choose a different activity.</p><label class="toggle-row"><span><strong>Animate breathing circle</strong><small>Turn off visual movement whenever you prefer.</small></span><input v-model="preferences.animate_breathing" type="checkbox" @change="saveProfile"></label><div class="profile-note"><strong>Screening is not included.</strong><p>This prototype does not score symptoms, assess safety, or make a diagnosis. Crisis support is always available separately.</p></div></section><section class="card profile-card"><p class="eyebrow">Your data</p><h2>Simple and local</h2><p>Check-ins, practice duration, and text conversations are saved in the local SQLite database for this coursework demonstration. They are not tied to a named account. Live model questions are sent to the configured provider.</p><button class="button quiet" type="button" @click="navigate('history')">Review or remove check-ins</button></section></template>
 

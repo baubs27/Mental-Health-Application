@@ -12,10 +12,16 @@ Verification date: October 26, 2026 (local Eastern time).
   check-in save/removal, profile read/save, and history read passed with
   synthetic values. The synthetic check-in and breathing rows were removed
   afterward; profile preferences were restored to the values read beforehand.
+- Standalone chat smoke against the local API: created a chat, sent a general
+  message, received a deterministic conversational reply, and retrieved both
+  user/assistant turns from the saved session. The transcript appeared in the
+  browser's Recent conversations list. The synthetic conversation was removed
+  afterward; the pre-existing STOP sessions/messages remain untouched.
 - SQLite integrity: read-only `PRAGMA integrity_check` returned `ok`; after
   cleanup the working database retained four existing STOP sessions, three
   messages, zero check-ins, and zero breathing test rows.
-- OpenAPI: confirmed breathing, mood-check-in, profile, and history routes are
+- OpenAPI: confirmed breathing, mood-check-in, profile, history, and standalone
+  chat routes are
   registered. `GET /api/profile` returned only `paced_breathing` and the
   animation preference; no secret/configuration value is returned.
 
@@ -31,11 +37,14 @@ No provider request or voice call was made during this pass. The shared key in
 
 ## Browser walkthrough
 
-The updated Vue app was opened at `http://127.0.0.1:5173/` with the refreshed
-FastAPI app on `http://127.0.0.1:8000/`. The narrow browser view showed the
-botanical home card, optional check-in, paced-breathing feature, and fixed six
-item navigation. Activities listed paced breathing and STOP. Chat showed the
-STOP-only question entry and separate optional voice controls. Profile showed
+The Vue app was opened at `http://127.0.0.1:5173/` with FastAPI on
+`http://127.0.0.1:8000/`. The narrow browser view showed the botanical home
+card, optional check-in, paced-breathing feature, and fixed six item navigation.
+Activities listed paced breathing and STOP. Chat showed an open-ended
+conversation page with example starters, a clear input, recent saved
+conversations, privacy/safety context, and separate optional voice controls.
+The STOP practice also has optional model help that can answer general questions
+without forcing them into STOP. Profile showed
 an editable default practice, animation setting, and the no-screening notice.
 History read the four pre-existing STOP sessions from SQLite. Crisis showed
 local emergency guidance and US 988 call/text/official chat links independently
@@ -59,9 +68,11 @@ can be disabled. Voice is opt-in and was not manually tested with a provider.
 Session-exit persistence on abrupt tab closure is best-effort. STOP session/chat
 delete/retention controls, crisis localization beyond the US link, user
 accounts/sync, deployment, and the proposed RAG workflow are unfinished.
-The model is a STOP explainer, not a general support chat. Check-ins are coarse,
-self-selected and removable, and are not treated as recommendations or
-clinical measures. Review new wording and pacing with intended users.
+The model is a bounded conversational companion, not therapy or monitored
+support. The open-chat route is verified with deterministic demo mode; no live
+provider request was made. Check-ins are coarse, self-selected and removable,
+and are not treated as recommendations or clinical measures. Review new wording
+and pacing with intended users.
 
 The API key was shared in chat previously; rotate it before further live use.
 It remains excluded from code, docs, build output, screenshots, and Git.

@@ -374,6 +374,19 @@ button:focus-visible, input:focus-visible {
 .toggle-row input { accent-color: #527b58; height: 20px; width: 20px; }
 .profile-note { background: #f5f2e9; border-radius: 13px; color: #5f5c4e; margin-top: 20px; padding: 14px; }
 .profile-note p { margin-bottom: 0; }
+.open-chat-card { background: linear-gradient(145deg, #fffefa, #f8f8f1); }
+.prompt-suggestions { background: #f5f7f0; border: 1px solid #e5eadf; border-radius: 15px; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding: 14px; }
+.prompt-suggestions .eyebrow { flex-basis: 100%; margin: 0 0 2px; }
+.prompt-suggestions button { background: #fffefa; border: 1px solid #dfe5d9; border-radius: 999px; color: #49634e; cursor: pointer; padding: 8px 12px; text-align: left; }
+.prompt-suggestions button:hover { background: #eaf0e5; border-color: #b8c9b1; }
+.open-chat-log { max-height: 390px; min-height: 80px; }
+.open-chat-form input { min-height: 46px; }
+.previous-chat-card { background: linear-gradient(145deg, #fffefa, #fbf7f2); }
+.conversation-choice { align-items: flex-start; background: #fbfbf6; border: 1px solid #e5eadf; border-radius: 13px; color: #415d47; cursor: pointer; display: flex; flex-direction: column; gap: 4px; margin-top: 8px; padding: 12px 14px; text-align: left; width: 100%; }
+.conversation-choice.selected { background: #eaf0e5; border-color: #9eb296; }
+.conversation-choice small, .saved-chat-entry summary small { color: #748072; }
+.saved-chat-entry { border-top: 1px solid #e5e9e1; padding: 10px 0; }
+.saved-chat-entry summary { align-items: center; color: #48644d; cursor: pointer; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
 
 @media (max-width: 560px) {
   .app-shell { padding-bottom: 96px; }
@@ -387,6 +400,9 @@ button:focus-visible, input:focus-visible {
   .activity-card { gap: 12px; grid-template-columns: 38px 1fr; padding: 18px; }
   .activity-icon { height: 38px; width: 38px; }
   .month-stats > div { padding: 12px 5px; }
+  .prompt-suggestions { flex-direction: column; }
+  .prompt-suggestions button { border-radius: 12px; }
+  .open-chat-form { align-items: stretch; }
 }
 @media (prefers-reduced-motion: reduce) {
   .breath-orb, .breath-orb.animated { animation: none; transition: none; }

@@ -6,9 +6,10 @@ IST 402 — Assignment 3
 
 A local coursework prototype for a small collection of optional skills. It
 includes a 50-second paced-breathing practice, a four-step STOP practice,
-optional self-reported mood check-ins, local history/profile controls, text
-questions about STOP, and optional WebRTC voice. A persistent crisis route works
-without the model. The app is intended only for fictional coursework scenarios;
+optional self-reported mood check-ins, local history/profile controls, open-ended
+text conversation, STOP explanations when requested, and optional WebRTC voice.
+A persistent crisis route works without the model. The app is intended only for
+fictional coursework scenarios;
 it is not therapy, diagnosis, medical advice, crisis monitoring, or emergency
 support.
 
@@ -25,11 +26,14 @@ practice and SQLite conversation history.
   visual pacing, early exit, self-reported check-ins, a monthly activity summary,
   editable local preferences, history, and independent crisis support.
 - Main navigation for Home, Activities, Chat, History, Profile, and Crisis.
-- Optional model Q&A about STOP and separate opt-in WebRTC voice controls.
+- Standalone, open-ended model chat with starter prompts and saved local
+  conversations; STOP questions are answered when relevant rather than forcing
+  every exchange into the STOP guide. Voice remains a separate opt-in path.
 - FastAPI routes that own model calls, request validation, and SQLite access.
-- SQLite conversations, STOP sessions, breathing sessions, coarse mood
-  check-ins, profile preferences, and messages. Actual assistant replies are
-  saved; failed user requests are marked failed and do not invent a reply.
+- SQLite conversations, STOP sessions, standalone chat sessions/messages,
+  breathing sessions, coarse mood check-ins, and profile preferences. Actual
+  assistant replies are saved; failed user requests are marked failed and do
+  not invent a reply.
 - Secret configuration through `backend/.env`; this file is ignored by Git.
 - Focused frontend and backend tests, production build, browser walkthrough, and
   read-only SQLite inspection recorded in `docs/verification.md`.
@@ -66,7 +70,8 @@ Class principles to carry forward:
 - `handoffs/`: current implementation state for the next work session.
 
 SQLite tables are `conversations`, `skill_sessions`, `messages`,
-`breathing_sessions`, `mood_checkins`, and `profile_preferences`. The model has
+`chat_sessions`, `chat_messages`, `breathing_sessions`, `mood_checkins`, and
+`profile_preferences`. The model has
 no direct database access. The prototype uses anonymous local session IDs; it
 has no account system or synchronization between devices. Check-ins use only a
 coarse user-selected value, are not used to personalize model responses, and can

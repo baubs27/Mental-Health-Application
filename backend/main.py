@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 import storage
-from prompts import DELEGATED_INSTRUCTIONS, LIVE_INSTRUCTIONS, STOP_CHAT_INSTRUCTIONS
+from prompts import DELEGATED_INSTRUCTIONS, LIVE_INSTRUCTIONS, SUPPORT_CHAT_INSTRUCTIONS
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -91,17 +91,19 @@ def model_mode() -> str:
 
 
 def demo_model_reply(message: str) -> str:
-    """Deterministic, explicitly labeled model stand-in for no-key demos."""
+    """Deterministic, explicitly labeled conversational stand-in for no-key demos."""
     normalized = message.casefold()
-    if "observe" in normalized:
+    if "observe" in normalized and any(term in normalized for term in ("step", "mean", "stop")):
         return "The Observe step means noticing what is happening inside you and around you, without having to judge or fix it. You choose what, if anything, to do next."
-    if "proceed" in normalized:
+    if "proceed" in normalized and any(term in normalized for term in ("step", "mean", "stop", "mindfully")):
         return "Proceed mindfully means choosing one next action that fits your priorities. It is fine to pause or choose a different action."
-    if "step back" in normalized or "take a step" in normalized:
+    if "step back" in normalized and any(term in normalized for term in ("stop", "mean", "step")):
         return "Take a step back creates a small pause before reacting. You might stop typing, unclench your hands, or simply wait a moment; choose what feels useful."
-    if "stop" in normalized:
+    if any(term in normalized for term in ("stop skill", "stop guide", "what is stop", "what does stop mean", "stop steps")):
         return "STOP is a short sequence: Stop; Take a step back; Observe inside and outside; Proceed mindfully. You can skip any part or leave whenever you want."
-    return "I can explain the reviewed STOP steps: Stop; Take a step back; Observe what is happening inside and outside; Proceed mindfully. Which step would you like to explore?"
+    if "breath" in normalized and any(term in normalized for term in ("stress", "stressed", "breathe", "breathing")):
+        return "There is no single best way. If it feels okay, let your breath stay comfortable and natural; you do not need to force it or hold it. We can also talk about what is making this moment stressful."
+    return "Thanks for sharing that. We can talk it through at your pace. Would you like to say more about what feels most important, or think together about one small next step?"
 
 
 async def generate_model_reply(message: str, history: list[dict[str, str]]) -> tuple[str, str]:
@@ -116,7 +118,7 @@ async def generate_model_reply(message: str, history: list[dict[str, str]]) -> t
         raise HTTPException(status_code=503, detail="The live model is not configured. Your message is saved without a reply.")
     payload = {
         "model": os.getenv("OPENAI_TEXT_MODEL", "gpt-6-luna").strip(),
-        "instructions": STOP_CHAT_INSTRUCTIONS,
+        "instructions": SUPPORT_CHAT_INSTRUCTIONS,
         "input": history[-8:],
         "max_output_tokens": 180,
         "store": False,
@@ -314,7 +316,7 @@ async def update_exercise_step(session_id: str, payload: StepUpdate) -> dict[str
 
 @app.post("/api/exercises/{session_id}/messages")
 async def exercise_message(session_id: str, payload: SessionMessage) -> dict[str, str]:
-    """Persist a user turn, ask the selected model, and save only a real reply."""
+    """Persist a user turn, request a supportive reply, and save only a real answer."""
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=422, detail="Enter a question")
@@ -343,6 +345,44 @@ async def exercise_message(session_id: str, payload: SessionMessage) -> dict[str
     return {"message_id": message_id, "reply": reply, "model_source": source}
 
 
+@app.get("/api/chat/sessions")
+async def get_chat_sessions() -> dict[str, Any]:
+    return {"sessions": storage.list_chat_sessions(10, DB_PATH)}
+
+
+@app.post("/api/chat/sessions", status_code=201)
+async def create_chat_session() -> dict[str, Any]:
+    """Create an open-ended text conversation, independent of any skill practice."""
+    return storage.begin_chat_session(DB_PATH)
+
+
+@app.post("/api/chat/sessions/{session_id}/messages")
+async def chat_message(session_id: str, payload: SessionMessage) -> dict[str, str]:
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="Write a message or choose a prompt")
+    try:
+        message_id = storage.add_chat_user_message(session_id, message, DB_PATH)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Conversation not found") from exc
+    rows = storage.get_chat_model_history(session_id, DB_PATH)
+    model_input = [{"role": row["role"], "content": row["content"]} for row in rows]
+    try:
+        reply, source = await generate_model_reply(message, model_input)
+        storage.add_chat_assistant_message(session_id, reply, source, DB_PATH)
+    except HTTPException as exc:
+        storage.mark_chat_request_failed(message_id, DB_PATH)
+        detail = exc.detail if isinstance(exc.detail, str) else "The model request failed. Your message is saved without a reply."
+        raise HTTPException(exc.status_code, detail={"message": detail, "message_id": message_id}) from exc
+    except Exception as exc:
+        storage.mark_chat_request_failed(message_id, DB_PATH)
+        raise HTTPException(
+            status_code=502,
+            detail={"message": "The model request failed. Your message is saved without a reply.", "message_id": message_id},
+        ) from exc
+    return {"message_id": message_id, "reply": reply, "model_source": source}
+
+
 @app.post("/api/exercises/{session_id}/finish")
 async def finish_exercise(session_id: str, payload: FinishRequest) -> dict[str, Any]:
     """Record completion/early exit and the server-measured elapsed seconds."""
@@ -357,6 +397,7 @@ async def get_history() -> dict[str, Any]:
     return {
         "sessions": storage.list_history(50, DB_PATH),
         "checkins": storage.list_mood_checkins(100, DB_PATH),
+        "chats": storage.list_chat_sessions(10, DB_PATH),
     }
 
 
