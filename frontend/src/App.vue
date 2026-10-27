@@ -259,7 +259,11 @@ onBeforeUnmount(() => {
   <main class="app-shell">
     <header class="topbar">
       <a class="brand" href="#" @click.prevent="returnHome">
-        <span class="brand-mark" aria-hidden="true">S</span>
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" focusable="false">
+            <path d="M16 27V14m0 7c-6 0-10-4-10-10 6 0 10 4 10 10Zm0-5c0-6 4-10 10-10 0 6-4 10-10 10Z" />
+          </svg>
+        </span>
         <span><span class="eyebrow">IST 402 · Coursework prototype</span><strong>Mental Health Skills</strong></span>
       </a>
       <button class="support-link" type="button" @click="openSupport">Crisis support</button>
@@ -322,10 +326,20 @@ onBeforeUnmount(() => {
     <template v-else>
       <p class="notice">For fictional coursework scenarios only. This is a learning prototype, not therapy, diagnosis, medical advice, or a monitored support service.</p>
       <section class="card welcome-card" aria-labelledby="welcome-title">
-        <p class="eyebrow">A short guided practice</p>
-        <h1 id="welcome-title">Try the STOP skill</h1>
-        <p>Move through the four steps at your own pace. You can leave at any point or open Crisis support.</p>
-        <button class="button primary start-button" type="button" :disabled="starting" @click="startExercise">{{ starting ? 'Starting…' : 'Start STOP' }}</button>
+        <svg class="hero-plant" viewBox="0 0 180 170" aria-hidden="true" focusable="false">
+          <path class="plant-stem" d="M91 166c3-38-2-70-22-105m25 105c-2-42 11-78 39-112m-48 70c-17-13-29-19-44-21m52 35c15-15 29-24 46-30" />
+          <path class="plant-leaf plant-leaf-one" d="M69 75C43 69 34 50 38 32c24 2 39 17 36 41-1 4-2 5-5 2Z" />
+          <path class="plant-leaf plant-leaf-two" d="M91 91c-5-27 8-45 29-52 9 23 2 43-21 54-4 2-6 1-8-2Z" />
+          <path class="plant-leaf plant-leaf-three" d="M53 124c-20-1-32-14-35-32 20-4 36 5 41 24 1 4-1 7-6 8Z" />
+          <path class="plant-leaf plant-leaf-four" d="M111 132c8-21 25-29 44-24-3 21-17 34-37 31-6-1-9-3-7-7Z" />
+          <path class="plant-leaf plant-leaf-five" d="M128 63c2-21 16-33 36-34 2 21-8 36-29 40-5 1-8-1-7-6Z" />
+        </svg>
+        <div class="welcome-copy">
+          <p class="eyebrow">A little room to pause</p>
+          <h1 id="welcome-title">Try the STOP skill</h1>
+          <p>Move through the four steps at your own pace. You can leave at any point or open Crisis support.</p>
+          <button class="button primary start-button" type="button" :disabled="starting" @click="startExercise">{{ starting ? 'Starting…' : 'Start STOP' }}</button>
+        </div>
         <p v-if="exerciseError" class="error-message" role="alert">{{ exerciseError }}</p>
       </section>
 

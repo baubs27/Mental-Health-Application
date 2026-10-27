@@ -35,11 +35,11 @@ For failure verification, the local backend was restarted with
 `MODEL_MODE=fail`. A fictional STOP question displayed “The model request
 failed. Your message is saved without a reply.” The failed message remained in
 the conversation, the app offered continue/leave controls, and the session was
-left at 0:07. The live backend was then restarted in its configured mode.
+left at 0:07. The live backend was then restarted in its configured mode. The visual pass then checked the home and exercise views at a narrow browser width: warm cream/sage surfaces, a small botanical sprig, and raised primary buttons remained readable without covering the main controls. The button press/hover treatment respects reduced-motion settings.
 
 ## Read-only SQLite inspection
 
-The database contains three linked conversations/sessions. This is the observed
+The database contains four linked conversations/sessions after the visual pass. This is the observed
 session summary (IDs shortened for readability):
 
 | Session | Status | Step reached | Duration | Messages |
@@ -47,8 +47,9 @@ session summary (IDs shortened for readability):
 | `772e9aff` | completed | 4 | 28 seconds | user complete; assistant complete from `openai` |
 | `081f9310` | left | 1 | 4 seconds | none |
 | `99cb7ab9` | left | 1 | 7 seconds | user failed; no assistant row |
+| `c01ed469` | left | 1 | 4 seconds | none; created during visual review |
 
-The user question and response were persisted under one conversation/session.
+The user question and response were persisted under one conversation/session. The latest 0:04 exit row is the later style-review session.
 The failure row contains the submitted user message marked `failed`; it has no
 assistant response. A read-only query of the tables, timestamps, duration,
 message statuses/source, and integrity check matched what appeared in the

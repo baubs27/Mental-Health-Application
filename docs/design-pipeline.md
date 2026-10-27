@@ -99,7 +99,7 @@ where themes appeared, not measures of clinical effectiveness.
 | **D3 (148 mentions; every participant):** reduce emotional cost of feeling, disclosing, or performing. | No disclosure, speech, feedback, or model response is needed to complete STOP. The question box is optional. Live-mode questions are sent to the configured provider; saved messages stay in local SQLite. |
 | **D4 (31 mentions):** keep safety affordance persistently visible. | Crisis-support control stays in the shared header on all app views, including while a request fails. |
 | **D5 (49 mentions):** personalize without a configuration burden; one participant asked for a “usual skill.” | No preference questionnaire is added. With only one skill, Part 3.2 has no skill recommendation. A future multi-skill design would use explicit past selection/self-report, show the basis, and allow a one-step override. The interface discloses that recent conversation context accompanies a live question; whether to offer a separate context opt-out remains open. |
-| **D6 (97 mentions; every participant):** use low-stimulus, non-judgmental language. | Use restrained visual styling and plain wording, visible focus, responsive layout, and reduced-motion support. Wording needs further user review. |
+| **D6 (97 mentions; every participant):** use low-stimulus, non-judgmental language. | Use a calm cream and sage palette with restrained botanical accents, raised but responsive buttons, plain wording, visible focus, a responsive layout, and reduced-motion support. Wording needs further user review. |
 
 ## Endpoints and failure behavior
 
