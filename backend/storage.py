@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,7 +11,7 @@ from uuid import uuid4
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "app.sqlite3"
+DEFAULT_DB_PATH = Path(os.getenv("APP_DB_PATH", PROJECT_ROOT / "data" / "app.sqlite3")).resolve()
 
 
 def utc_now() -> str:
@@ -114,6 +115,12 @@ def initialize(db_path: Path = DEFAULT_DB_PATH) -> None:
                 ON chat_messages(session_id, created_at, message_id);
             """
         )
+        # Additive migration for installs created before Part 3.3 preferences.
+        columns = {row[1] for row in db.execute("PRAGMA table_info(profile_preferences)")}
+        if "response_style" not in columns:
+            db.execute("ALTER TABLE profile_preferences ADD COLUMN response_style TEXT NOT NULL DEFAULT 'balanced'")
+        if "personalize_chat" not in columns:
+            db.execute("ALTER TABLE profile_preferences ADD COLUMN personalize_chat INTEGER NOT NULL DEFAULT 0")
 
 
 def begin_session(db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
@@ -337,20 +344,72 @@ def get_profile_preferences(db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
     with connect(db_path) as db:
         row = db.execute("SELECT * FROM profile_preferences WHERE profile_id = 'local-demo'").fetchone()
         if row:
-            return {"default_skill": row["default_skill"], "animate_breathing": bool(row["animate_breathing"])}
-        return {"default_skill": "paced_breathing", "animate_breathing": True}
+            return {
+                "default_skill": row["default_skill"],
+                "animate_breathing": bool(row["animate_breathing"]),
+                "response_style": row["response_style"],
+                "personalize_chat": bool(row["personalize_chat"]),
+            }
+        return {
+            "default_skill": "paced_breathing",
+            "animate_breathing": True,
+            "response_style": "balanced",
+            "personalize_chat": False,
+        }
 
 
-def save_profile_preferences(default_skill: str, animate_breathing: bool, db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
+def save_profile_preferences(
+    default_skill: str,
+    animate_breathing: bool,
+    response_style: str = "balanced",
+    personalize_chat: bool = False,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> dict[str, Any]:
     if default_skill not in {"STOP", "paced_breathing"}:
         raise ValueError("Invalid default skill")
+    if response_style not in {"balanced", "reflective", "practical"}:
+        raise ValueError("Invalid response style")
     updated_at = utc_now()
     with connect(db_path) as db:
         db.execute(
-            "INSERT INTO profile_preferences (profile_id, default_skill, animate_breathing, updated_at) VALUES ('local-demo', ?, ?, ?) ON CONFLICT(profile_id) DO UPDATE SET default_skill = excluded.default_skill, animate_breathing = excluded.animate_breathing, updated_at = excluded.updated_at",
-            (default_skill, int(animate_breathing), updated_at),
+            "INSERT INTO profile_preferences (profile_id, default_skill, animate_breathing, updated_at, response_style, personalize_chat) VALUES ('local-demo', ?, ?, ?, ?, ?) ON CONFLICT(profile_id) DO UPDATE SET default_skill = excluded.default_skill, animate_breathing = excluded.animate_breathing, updated_at = excluded.updated_at, response_style = excluded.response_style, personalize_chat = excluded.personalize_chat",
+            (default_skill, int(animate_breathing), updated_at, response_style, int(personalize_chat)),
         )
-    return {"default_skill": default_skill, "animate_breathing": animate_breathing}
+    return {
+        "default_skill": default_skill,
+        "animate_breathing": animate_breathing,
+        "response_style": response_style,
+        "personalize_chat": personalize_chat,
+    }
+
+
+def get_personalization_context(db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any] | None:
+    """Return only opted-in, explicit profile choices and coarse completed-use counts."""
+    profile = get_profile_preferences(db_path)
+    if not profile["personalize_chat"]:
+        return None
+    with connect(db_path) as db:
+        rows = db.execute(
+            """SELECT skill, started_at FROM (
+                   SELECT 'STOP' AS skill, started_at FROM skill_sessions WHERE status = 'completed'
+                   UNION ALL
+                   SELECT 'paced_breathing' AS skill, started_at FROM breathing_sessions WHERE status = 'completed'
+               ) ORDER BY started_at DESC"""
+        ).fetchall()
+    counts = {"STOP": 0, "paced_breathing": 0}
+    for row in rows:
+        counts[row["skill"]] += 1
+    most_used = max(counts, key=lambda skill: counts[skill]) if rows else None
+    # Ties are reported as no single most-used practice; never infer preference.
+    top = max(counts.values()) if rows else 0
+    most_used = most_used if top and list(counts.values()).count(top) == 1 else None
+    return {
+        "response_style": profile["response_style"],
+        "usual_practice": profile["default_skill"],
+        "completed_practice_counts": counts,
+        "most_used_completed_practice": most_used,
+        "last_completed_practice": rows[0]["skill"] if rows else None,
+    }
 
 
 def begin_chat_session(db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:

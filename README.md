@@ -14,12 +14,13 @@ Upload one `report.md` file for each part. The reports and evidence currently in
 | --- | --- | --- | --- | --- |
 | **3.1 — Design proposal** | [`docs/report.md`](docs/report.md) | [`93e06e613ef5ec53768c2d61caec3c305739fe50`](https://github.com/baubs27/Mental-Health-Application/commit/93e06e613ef5ec53768c2d61caec3c305739fe50) | [Design proposal and R/D rationale](docs/report.md); [implemented design map](docs/design-pipeline.md) | [Supplied expected-demo reference](docs/recordings/expected_demo.mov). This is a design reference, not a recording of this app. |
 | **3.2 — Working application** | [`docs/part-3.2/report.md`](docs/part-3.2/report.md) | [`e78148b271c0e2d263fe4c70ef44e82c8fada0d5`](https://github.com/baubs27/Mental-Health-Application/commit/e78148b271c0e2d263fe4c70ef44e82c8fada0d5) | [Design and implementation notes](docs/design-pipeline.md); [verification evidence](docs/verification.md); [Live Audio notes](docs/voice-audio.md) | [Supplied expected-demo reference](docs/recordings/expected_demo.mov). No recording of the working app is committed yet. |
+| **3.3 — Integration, evaluation, and demonstration** | [`docs/part-3.3/report.md`](docs/part-3.3/report.md) and [15-scenario evaluation](docs/part-3.3/evaluation.md) | Pending publication of this Part 3.3 update. | [Part 3.3 design changes](docs/design-pipeline.md#part-33-personalization-update); [test and build evidence](docs/verification.md#part-33-integration-and-evaluation) | No app or process recording is committed yet; see the report for recording status. |
 
-**What is complete:** Part 3.1 documents the proposed skill experience, model role, data, user control, and links to the research findings. Part 3.2 provides a Vue/FastAPI/SQLite coursework prototype with STOP, paced breathing, open-ended chat, saved local history, and a crisis route independent of the model.
+**What is complete:** Part 3.1 documents the proposed skill experience, model role, data, user control, and links to the research findings. Part 3.2 provides a Vue/FastAPI/SQLite coursework prototype with STOP, paced breathing, open-ended chat, saved local history, and a crisis route independent of the model. Part 3.3 adds opt-in chat personalization and history-based practice shortcuts, a deterministic 15-scenario evaluation, and cross-case checks.
 
-**What the evidence shows:** The verification notes record a successful frontend build, browser walkthrough, deterministic chat reply, SQLite persistence/retrieval, and database integrity check. They also distinguish demo-mode checks from live-provider behavior.
+**What the evidence shows:** Verification notes record frontend tests and build, backend tests, browser profile persistence, deterministic model replies, SQLite storage, and forced-failure behavior. Local evaluation uses fictional inputs and mocks; no live provider calls were made for Part 3.3.
 
-**Still unresolved:** No app walkthrough recording is in the repository; live text/voice provider behavior is not verified; voice, data deletion/retention, and crisis-resource localization need further review. The app is a fictional coursework prototype, not a support or clinical service.
+**Still unresolved:** No app walkthrough or process recording is in the repository. Live-model variation and peer testing remain outstanding because the previously supplied provider key was exposed and no rotated key was configured. Voice, message deletion/retention, screen-reader behavior, and crisis-resource localization need further review. The app is a fictional coursework prototype, not a support or clinical service.
 
 ## Purpose and scope
 
@@ -47,7 +48,11 @@ practice and SQLite conversation history.
 - Main navigation for Home, Activities, Chat, History, Profile, and Crisis.
 - Standalone, open-ended model chat with starter prompts and saved local
   conversations; STOP questions are answered when relevant rather than forcing
-  every exchange into the STOP guide. Voice remains a separate opt-in path.
+  every exchange into the STOP guide. Profile can opt in to sharing a selected
+  response style, usual practice, and aggregate completed-practice counts with
+  live chat. Voice remains a separate opt-in path.
+- Home offers a repeat shortcut for the most recently completed practice. The
+  explicit usual-practice choice still controls the featured practice.
 - FastAPI routes that own model calls, request validation, and SQLite access.
 - SQLite conversations, STOP sessions, standalone chat sessions/messages,
   breathing sessions, coarse mood check-ins, and profile preferences. Actual
@@ -61,7 +66,8 @@ practice and SQLite conversation history.
 
 `docs/report.md` records the Part 3.1 proposal and its links to the supplied
 R/D findings. `docs/design-pipeline.md` maps the current multi-view experience
-to those findings. The app does not infer mood or diagnosis. It excludes
+to those findings, and `docs/part-3.3/report.md` records implementation changes
+and evaluation limits. The app does not infer mood or diagnosis. It excludes
 screening questionnaires and scores because this coursework implementation has
 no validated clinical instrument or scoring rules. Remaining work includes
 reviewing practice wording and pacing, retention/deletion of session and chat
@@ -90,8 +96,10 @@ Class principles to carry forward:
 
 SQLite tables are `conversations`, `skill_sessions`, `messages`,
 `chat_sessions`, `chat_messages`, `breathing_sessions`, `mood_checkins`, and
-`profile_preferences`. The model has
-no direct database access. The prototype uses anonymous local session IDs; it
+`profile_preferences`, including an explicit response style and chat-personalization
+switch. The backend summarizes only completed-practice counts when personalization
+is enabled; check-ins and other conversations are excluded. The model has no
+direct database access. The prototype uses anonymous local session IDs; it
 has no account system or synchronization between devices. Check-ins use only a
 coarse user-selected value, are not used to personalize model responses, and can
 be removed from History.
@@ -106,30 +114,38 @@ provider dashboard before further use; it was shared in chat.
 
 ## Run locally
 
+Prerequisites: Node.js 20.19+ (or 22.12+) and Python 3.10+. Use two terminals
+from a clean checkout. The default model mode is deterministic demo mode and
+does not need a provider key.
+
 Backend, from `backend/`:
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env
-# Add OPENAI_API_KEY to backend/.env only if using live model mode.
+$env:MODEL_MODE='demo'
 .\.venv\Scripts\python.exe -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Frontend, from `frontend/`:
 
 ```powershell
-npm install
+npm ci
 npm run dev
 ```
 
 Open the localhost URL printed by Vite. The API listens on `127.0.0.1:8000`.
-To use the deterministic stand-in, set `MODEL_MODE=demo`; to exercise a
-sanitized failure response, set `MODEL_MODE=fail` for the backend process.
+To exercise a sanitized model failure response, set `$env:MODEL_MODE='fail'`
+for the backend process. To use live mode, configure a rotated
+`OPENAI_API_KEY` in `backend/.env` only; do not put it in frontend files or
+share it in documentation.
 
 Run checks with `npm test` and `npm run build` in `frontend/`, and
-`python -m pytest` in `backend/`. Verification notes distinguish mocked tests
-from the manual live provider request.
+`.venv\Scripts\python.exe -m pytest` in `backend/`. For an isolated local run,
+set `APP_DB_PATH` to a SQLite file path before starting FastAPI. The default is
+`data/app.sqlite3`. Verification notes distinguish deterministic and mocked
+checks from live-provider behavior; the Part 3.3 suite makes no provider calls.
 
 ## Project structure
 

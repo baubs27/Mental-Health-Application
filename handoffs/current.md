@@ -2,47 +2,34 @@
 
 ## State
 
-The local prototype includes paced breathing, STOP, optional mood check-ins,
-monthly history summary, explicit profile preferences, standalone open-ended
-text chat with starter prompts and locally saved recent conversations,
-optional voice, and persistent crisis support. The Vue app is available on
-`http://127.0.0.1:5173/` and FastAPI was refreshed on `http://127.0.0.1:8000/`.
-The open-chat update is published to the user's Mental-Health-Application
-repository on branch `main` at `b12c67e`.
+Part 3.3 implementation is in progress. The app now has an additive profile
+migration, an explicit chat response-style preference, an off-by-default
+personalization switch, a Home shortcut to repeat the latest completed
+practice, and deterministic crisis/diagnosis/medication boundaries. The user’s
+explicit usual-practice preference remains the featured practice. The local
+demo servers are running at `127.0.0.1:5173` and `127.0.0.1:8000` with
+`MODEL_MODE=demo` and an isolated `data/part33-demo.sqlite3` database.
 
-Read `README.md`, `docs/design-pipeline.md`, and `docs/verification.md` before
-continuing. The video is treated as a visual/feature reference. The screening
-questionnaire and scores are intentionally excluded because no validated
-instrument/scoring specification was supplied.
+## Verification
 
-## Verification status
+- Backend: 36 tests passed, including 15 fictional scenarios, five behavior /
+  migration checks, and the existing voice API tests.
+- Frontend: 9 tests passed; production build succeeded.
+- Browser: profile selection persisted after reload. A fictional STOP session
+  completed and saved in the isolated database; Home then showed the latest
+  completed practice shortcut without changing the chosen usual practice.
+- No live provider call was made. The previously shared key was treated as
+  exposed and not reused.
 
-Frontend: 9 tests pass and Vite production build succeeds. The standalone chat
-route created a synthetic conversation, generated a demo reply, reloaded both
-messages from SQLite in the browser, and then removed the chat test rows without
-modifying STOP history. New SQLite/API features passed synthetic storage and
-local HTTP smoke checks, and paced breathing start/early-stop was checked in the
-browser. SQLite integrity check is `ok`.
+## Outstanding Part 3.3 evidence
 
-The latest backend pytest attempt was blocked by the sandbox's temp-directory
-restriction; the in-project temp run stalled, so the new API routes are not
-claimed as pytest-verified. Earlier notes recorded 16 pre-change backend tests
-passing. Live provider text and voice were not exercised in this pass. Chat uses
-a bounded conversational prompt; it can discuss general topics and explain
-STOP when relevant. Profile and check-in data are not included in model context.
+- Repeat a small live-model selection after a newly rotated key is configured
+  locally in `backend/.env`; never paste the key into chat or docs.
+- Record and link the app demonstration and failure-investigation screencast.
+  Computer Use was interrupted before recording was captured.
+- A peer session and intended-user / screen-reader review were not performed.
 
-## Safety and privacy
-
-Never copy `backend/.env` or `data/app.sqlite3` to GitHub. Do not display or
-reuse the key shared in chat; rotate it before further live calls. This is
-fictional coursework, not therapy or a monitored service. Check-ins are
-optional, coarse and removable; do not interpret them as diagnosis or use them
-as model context.
-
-## Remaining work
-
-Potential next steps after review: decide retention/deletion for STOP sessions
-and conversations, add crisis-resource localization, review wording and breath
-pacing with intended users, determine whether recent chat context should be
-separately opt-in, and evaluate the proposed RAG workflow. Do not add a clinical
-screening flow without a validated instrument and agreed handling.
+See `README.md`, `docs/design-pipeline.md`, `docs/verification.md`, and
+`docs/part-3.3/` for implementation rationale, run instructions, and scenario
+results. The standalone task workspace itself is not a local Git checkout;
+the GitHub `main` commit must be recorded in the Part 3.3 report after publish.

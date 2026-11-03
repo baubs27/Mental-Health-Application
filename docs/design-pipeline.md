@@ -40,7 +40,7 @@ Practices can be stopped or left. A page-exit beacon is best-effort; if the clie
 
 ## Model role and data
 
-The model is an optional conversational companion for everyday topics and practical questions, and can explain STOP when asked. FastAPI selects the prompt and at most eight recent successful turns from the current conversation, validates provider responses, and handles failures. It does not diagnose, infer mood, decide when support appears, or access SQLite. The browser sends messages to the app API; chat messages are stored locally in SQLite and shown in recent conversation history. A failed call leaves a failed user turn and stores no fabricated answer. Voice uses a separate explicit WebRTC call and is not part of saved text conversations.
+The model is an optional conversational companion for everyday topics and practical questions, and can explain STOP when asked. FastAPI selects the prompt and at most eight recent successful turns from the current conversation, validates provider responses, and handles failures. The model itself does not access SQLite. When the user opts in through Profile, FastAPI adds the explicit response style, selected usual practice, and aggregate completed-practice counts to its instructions. Check-ins and other conversation transcripts are excluded. If personalization is off, the profile/history summary is absent. The model does not diagnose, infer mood, decide when support appears, or recommend a practice solely from use counts. A failed call leaves a failed user turn and stores no fabricated answer. Voice uses a separate explicit WebRTC call and is not part of saved text conversations.
 
 SQLite at `data/app.sqlite3` stores:
 
@@ -51,7 +51,8 @@ SQLite at `data/app.sqlite3` stores:
 - `chat_messages`: role/content/status/model source and timestamp for each standalone chat turn.
 - `breathing_sessions`: status, start/end, and measured duration.
 - `mood_checkins`: one of three user-selected coarse labels and timestamp.
-- `profile_preferences`: selected usual practice and breathing animation preference.
+- `profile_preferences`: selected usual practice, breathing animation preference,
+  selected chat response style, and an opt-in personalization switch.
 
 No account/name/email is collected. Check-in labels do not cause personalization. Check-ins can be individually removed; deletion/retention controls for STOP sessions and conversations remain unfinished. Live-mode questions and recent conversation context are transmitted to the configured provider. Local storage does not guarantee provider-side non-retention.
 
@@ -72,6 +73,37 @@ The supplied assignment summary describes an ongoing study with 15 patients, 13 
 | **D5 (49 mentions):** personalize without configuration burden; “usual skill” was requested. | Profile lets the person choose their usual practice and turn breathing animation off. Check-ins are never treated as recommendations or model context. |
 | **D6 (97 mentions; all participants):** low-stimulus, non-judgmental wording. | Cream/sage surfaces, botanical illustration, restrained raised buttons, readable layouts, visible focus, and reduced-motion support; wording still needs user review. |
 
+## Part 3.3 personalization update
+
+The initial proposal treated explicit choice or self-rated helpfulness as the
+source of a future default. Part 3.3 separates the durable preference from the
+history shortcut: the explicit **usual practice** setting remains the featured
+Home activity, while the most recent completed practice can be repeated through
+a separate optional button. History counts describe only completed app
+sessions. They are not interpreted as preference, mood, progress, or need, and
+they never overwrite the user's choice.
+
+Profile adds a response style (`balanced`, `reflective`, or `practical`) and an
+off-by-default **Personalize AI chat** switch. The person can change both at any
+time. The Home shortcut adapts to saved usage; model phrasing adapts to the
+chosen style only after opt-in. In live mode the backend may also provide
+aggregate completion counts and usual practice to the current chat's model
+instructions. It does not send check-ins or other chat transcripts in this
+summary. The existing recent turns from the active chat remain ordinary
+conversation context when live mode is used.
+
+Implementation detail: `storage.get_personalization_context()` reads the
+profile and completed practice records, returns no summary when opt-in is off,
+and omits sensitive check-in/message content. `main.personalized_instructions()`
+formats that summary as server-owned guidance that explicitly forbids emotional
+or clinical inference and recommendations based only on counts. The demo model
+uses deterministic style variants for a repeatable UI demonstration. This is
+instructional personalization, not a clinically meaningful persona.
+
+The database initialization makes an additive migration for existing
+`profile_preferences` tables. The default style is `balanced`; personalization
+defaults to off. No named identity, symptom score, or check-in is added.
+
 ## Routes and behavior
 
 | Route | Role |
@@ -82,7 +114,7 @@ The supplied assignment summary describes an ongoing study with 15 patients, 13 
 | `POST /api/chat/sessions/{id}/messages` | Save a general chat turn and, on success, its actual model reply. |
 | `POST /api/breathing/sessions`, `POST /api/breathing/sessions/{id}/finish` | Persist breathing start and completion/early stop. |
 | `POST /api/mood-checkins`, `GET /api/mood-checkins`, `DELETE /api/mood-checkins/{id}` | Save/list/remove a coarse voluntary check-in. |
-| `GET /api/profile`, `PUT /api/profile` | Read/save the explicit usual-practice and animation preferences. |
+| `GET /api/profile`, `PUT /api/profile` | Read/save the usual practice, animation, response style, and personalization choice. |
 | `GET /api/history` | Return local sessions, check-ins, and recent chats without model access. |
 | `GET /api/support` | Static crisis wording independent of model status. |
 

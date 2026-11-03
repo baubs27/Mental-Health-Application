@@ -72,6 +72,8 @@ class ProfilePreferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
     default_skill: Literal["STOP", "paced_breathing"]
     animate_breathing: bool
+    response_style: Literal["balanced", "reflective", "practical"] = "balanced"
+    personalize_chat: bool = False
 
 
 def configured_duration() -> int:
@@ -90,9 +92,15 @@ def model_mode() -> str:
     return mode if mode in {"demo", "openai", "fail"} else "demo"
 
 
-def demo_model_reply(message: str) -> str:
+def demo_model_reply(message: str, personalization: dict[str, Any] | None = None) -> str:
     """Deterministic, explicitly labeled conversational stand-in for no-key demos."""
     normalized = message.casefold()
+    if any(term in normalized for term in ("kill myself", "hurt myself", "end my life", "suicide", "in immediate danger")):
+        return "I’m sorry this feels so urgent. If you may be in immediate danger, open the separate Crisis support page now or contact local emergency services. This app is not monitored and cannot provide emergency help."
+    if any(term in normalized for term in ("diagnose", "do i have", "what disorder", "am i bipolar", "am i depressed")):
+        return "I can’t diagnose or assess a condition. If you want, we can talk about what you’ve noticed in your own words, and you can decide whether to discuss it with a qualified professional."
+    if any(term in normalized for term in ("medication", "medicine", "prescription", "dosage", "dose")):
+        return "I can’t give medical or medication advice. A qualified health professional or pharmacist can answer questions about your situation. I can still help you organize what you want to ask."
     if "observe" in normalized and any(term in normalized for term in ("step", "mean", "stop")):
         return "The Observe step means noticing what is happening inside you and around you, without having to judge or fix it. You choose what, if anything, to do next."
     if "proceed" in normalized and any(term in normalized for term in ("step", "mean", "stop", "mindfully")):
@@ -103,22 +111,53 @@ def demo_model_reply(message: str) -> str:
         return "STOP is a short sequence: Stop; Take a step back; Observe inside and outside; Proceed mindfully. You can skip any part or leave whenever you want."
     if "breath" in normalized and any(term in normalized for term in ("stress", "stressed", "breathe", "breathing")):
         return "There is no single best way. If it feels okay, let your breath stay comfortable and natural; you do not need to force it or hold it. We can also talk about what is making this moment stressful."
-    return "Thanks for sharing that. We can talk it through at your pace. Would you like to say more about what feels most important, or think together about one small next step?"
+    reply = "Thanks for sharing that. We can talk it through at your pace. Would you like to say more about what feels most important, or think together about one small next step?"
+    if personalization:
+        if personalization["response_style"] == "reflective":
+            reply = "I can listen without rushing to solutions. " + reply
+        elif personalization["response_style"] == "practical":
+            reply = "If it would help, we can look at one practical next step. " + reply
+    return reply
 
 
-async def generate_model_reply(message: str, history: list[dict[str, str]]) -> tuple[str, str]:
+def personalized_instructions(context: dict[str, Any] | None) -> str:
+    if not context:
+        return SUPPORT_CHAT_INSTRUCTIONS
+    counts = context["completed_practice_counts"]
+    recent = "; ".join(f"{count} {skill} completion(s)" for skill, count in counts.items() if count)
+    summary = recent or "no completed practices recorded"
+    return (
+        SUPPORT_CHAT_INSTRUCTIONS
+        + "\n\nUser-approved personalization (coarse local profile/history only): "
+        + f"preferred response style={context['response_style']}; "
+        + f"usual practice explicitly selected by user={context['usual_practice']}; "
+        + f"completed practice counts={summary}; "
+        + f"most-used completed practice={context['most_used_completed_practice'] or 'none'}; "
+        + f"last completed practice={context['last_completed_practice'] or 'none'}. "
+        + "Use the response style to shape phrasing. Treat activity counts only as an app-use record, "
+        + "not as evidence of mood, need, preference, improvement, or diagnosis. Do not recommend a "
+        + "practice solely because it appears in history. The user can change direction. Check-in data "
+        + "and saved message contents are not included in this personalization summary."
+    )
+
+
+async def generate_model_reply(
+    message: str,
+    history: list[dict[str, str]],
+    personalization: dict[str, Any] | None = None,
+) -> tuple[str, str]:
     mode = model_mode()
     if mode == "fail":
         raise HTTPException(status_code=502, detail="The model request failed. Your message is saved without a reply.")
     if mode == "demo":
-        return demo_model_reply(message), "demo"
+        return demo_model_reply(message, personalization), "demo"
 
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key:
         raise HTTPException(status_code=503, detail="The live model is not configured. Your message is saved without a reply.")
     payload = {
         "model": os.getenv("OPENAI_TEXT_MODEL", "gpt-6-luna").strip(),
-        "instructions": SUPPORT_CHAT_INSTRUCTIONS,
+        "instructions": personalized_instructions(personalization),
         "input": history[-8:],
         "max_output_tokens": 180,
         "store": False,
@@ -327,7 +366,9 @@ async def exercise_message(session_id: str, payload: SessionMessage) -> dict[str
     rows = storage.get_model_history(session_id, DB_PATH)
     model_input = [{"role": row["role"], "content": row["content"]} for row in rows]
     try:
-        reply, source = await generate_model_reply(message, model_input)
+        reply, source = await generate_model_reply(
+            message, model_input, storage.get_personalization_context(DB_PATH)
+        )
         storage.add_assistant_message(session_id, reply, source, DB_PATH)
     except HTTPException as exc:
         storage.mark_request_failed(message_id, DB_PATH)
@@ -368,7 +409,9 @@ async def chat_message(session_id: str, payload: SessionMessage) -> dict[str, st
     rows = storage.get_chat_model_history(session_id, DB_PATH)
     model_input = [{"role": row["role"], "content": row["content"]} for row in rows]
     try:
-        reply, source = await generate_model_reply(message, model_input)
+        reply, source = await generate_model_reply(
+            message, model_input, storage.get_personalization_context(DB_PATH)
+        )
         storage.add_chat_assistant_message(session_id, reply, source, DB_PATH)
     except HTTPException as exc:
         storage.mark_chat_request_failed(message_id, DB_PATH)
@@ -440,7 +483,13 @@ async def get_profile() -> dict[str, Any]:
 
 @app.put("/api/profile")
 async def put_profile(payload: ProfilePreferences) -> dict[str, Any]:
-    return storage.save_profile_preferences(payload.default_skill, payload.animate_breathing, DB_PATH)
+    return storage.save_profile_preferences(
+        payload.default_skill,
+        payload.animate_breathing,
+        payload.response_style,
+        payload.personalize_chat,
+        DB_PATH,
+    )
 
 
 @app.get("/api/support")

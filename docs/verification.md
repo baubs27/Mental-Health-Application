@@ -77,3 +77,37 @@ and pacing with intended users.
 
 The API key was shared in chat previously; rotate it before further live use.
 It remains excluded from code, docs, build output, screenshots, and Git.
+
+## Part 3.3 integration and evaluation
+
+The added suite uses fictional inputs, `TestClient`, temporary SQLite files,
+and deterministic demo/failure modes. It makes no provider requests.
+
+- Backend: `.venv\Scripts\python.exe -m pytest -vv -p no:cacheprovider --basetemp .pytest-run-part33-final tests` — **36 passed**, including 15 Part 3.3 scenarios and five cross-case personalization/failure/migration checks. One AnyIO `BlockingPortal` deprecation warning was emitted by Starlette's test client.
+- Frontend: `npm test` — **9 passed**.
+- Production frontend: `npm run build` — Vite production build succeeded.
+- Browser: reloaded the Profile route after selecting STOP, reflective chat style, and opting in to personalization. All three values remained selected after reload. The UI explains that the live model receives only those explicit settings and aggregate completion counts; Home keeps the selected usual practice separate from its recent-history shortcut.
+- Database test isolation: automated scenarios used per-test temporary SQLite files. The running UI demo uses `data/part33-demo.sqlite3`, set with `APP_DB_PATH`, so it does not inspect or modify the regular `data/app.sqlite3` history.
+- Mocked model request: a fake provider captured the request instructions. With opt-in off, the profile/history summary was absent. With opt-in on, the selected style/usual practice and coarse completed counts were present; a saved check-in was absent.
+- Forced failure: a fake failure mode saved one user turn as failed without creating an assistant turn. Static Crisis support returned HTTP 200 independently.
+
+The deterministic suite exposed and fixed an unexpected generic reply to crisis
+language in `demo_model_reply`; this path bypassed the live model prompt. The
+demo now directs the person to the independent Crisis page and local emergency
+services. It also explicitly declines diagnosis and medication advice.
+
+No live calls or peer session were performed. The previously supplied key was
+exposed in chat and was not reused. No rotated key was configured. No app or
+process recording was captured; see the [Part 3.3 report](part-3.3/report.md)
+for the exact limitation and outstanding evidence.
+
+### Clean-checkout run instructions
+
+The README commands are intended for a clean checkout with Node.js 20.19+ (or
+22.12+) and Python 3.10+: create a backend virtual environment, install the
+listed requirements, copy `.env.example`, start FastAPI in demo mode, run
+`npm ci` in `frontend/`, and start Vite in a second terminal. The checked
+workspace already had its declared packages installed, and the test suite and
+build passed. A completely fresh network clone/install was not performed in
+this pass, so package downloads on another machine remain dependent on their
+platform and package registry availability.
