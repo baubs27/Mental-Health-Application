@@ -3,7 +3,7 @@
 ## Submitted version
 
 - Repository: [Mental Health Application](https://github.com/baubs27/Mental-Health-Application)
-- Application commit: [`67d5b941827254e7058df26a66040b1fadddfeab`](https://github.com/baubs27/Mental-Health-Application/commit/67d5b941827254e7058df26a66040b1fadddfeab).
+- Application commit: [`9ef64abd579bbebf6314f7bd8be79e8e46a2566e`](https://github.com/baubs27/Mental-Health-Application/commit/9ef64abd579bbebf6314f7bd8be79e8e46a2566e).
 - Run instructions: [project README](../../README.md#run-locally)
 - Design and generated-code explanation: [design pipeline](../design-pipeline.md#part-33-personalization-update)
 - Evaluation cases and observed results: [fictional scenario evaluation](evaluation.md)

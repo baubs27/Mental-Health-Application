@@ -35,9 +35,9 @@ demo servers are running at `127.0.0.1:5173` and `127.0.0.1:8000` with
   API against the isolated `data/part33-demo.sqlite3` database. Revoke the key
   in the provider dashboard before using a replacement.
 - No new browser recording or visual walkthrough was captured.
-- The connected GitHub integration allowed read-only inspection but rejected
-  both commit and contents writes with HTTP 403. The current local documentation
-  and Profile feedback change are not on `main` yet.
+- GitHub connector write calls returned HTTP 403, but the configured Git remote
+  accepted the clean-clone push. App and documentation updates are published in
+  commit `9ef64abd579bbebf6314f7bd8be79e8e46a2566e` on `main`.
 
 ## Outstanding Part 3.3 evidence
 
@@ -50,5 +50,6 @@ demo servers are running at `127.0.0.1:5173` and `127.0.0.1:8000` with
 See `README.md`, `docs/design-pipeline.md`, `docs/verification.md`, and
 `docs/part-3.3/` for implementation rationale, run instructions, and scenario
 results. This Assignment 3 folder has no standalone Git history or remote; the
-parent folder currently reports no commits and no remote. Keep publication
-separate from local verification and do not commit ignored secrets or databases.
+parent folder currently reports no commits and no remote. The clean clone at
+`.publish-checkout` is used for Git operations; ignored secrets and databases
+stay local.

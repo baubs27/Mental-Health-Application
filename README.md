@@ -6,7 +6,7 @@ IST 402 — Assignment 3
 
 **Repository:** [Mental Health Application](https://github.com/baubs27/Mental-Health-Application)
 
-**Submitted application version:** [`67d5b941827254e7058df26a66040b1fadddfeab`](https://github.com/baubs27/Mental-Health-Application/commit/67d5b941827254e7058df26a66040b1fadddfeab) on `main`. This commit identifies the Part 3.3 application and evaluation version. Earlier milestone commits are listed in the table.
+**Submitted application version:** [`9ef64abd579bbebf6314f7bd8be79e8e46a2566e`](https://github.com/baubs27/Mental-Health-Application/commit/9ef64abd579bbebf6314f7bd8be79e8e46a2566e) on `main`. This commit identifies the Part 3.3 application and evaluation version. Earlier milestone commits are listed in the table.
 
 Upload one `report.md` file for each part. The reports and evidence currently in this repository are:
 
@@ -14,7 +14,7 @@ Upload one `report.md` file for each part. The reports and evidence currently in
 | --- | --- | --- | --- | --- |
 | **3.1 — Design proposal** | [`docs/report.md`](docs/report.md) | [`93e06e613ef5ec53768c2d61caec3c305739fe50`](https://github.com/baubs27/Mental-Health-Application/commit/93e06e613ef5ec53768c2d61caec3c305739fe50) | [Design proposal and R/D rationale](docs/report.md); [implemented design map](docs/design-pipeline.md) | [Supplied expected-demo reference](docs/recordings/expected_demo.mov). This is a design reference, not a recording of this app. |
 | **3.2 — Working application** | [`docs/part-3.2/report.md`](docs/part-3.2/report.md) | [`e78148b271c0e2d263fe4c70ef44e82c8fada0d5`](https://github.com/baubs27/Mental-Health-Application/commit/e78148b271c0e2d263fe4c70ef44e82c8fada0d5) | [Design and implementation notes](docs/design-pipeline.md); [verification evidence](docs/verification.md); [Live Audio notes](docs/voice-audio.md) | [Supplied expected-demo reference](docs/recordings/expected_demo.mov). No recording of the working app is committed yet. |
-| **3.3 — Integration, evaluation, and demonstration** | [`docs/part-3.3/report.md`](docs/part-3.3/report.md) and [15-scenario evaluation](docs/part-3.3/evaluation.md) | [`67d5b941827254e7058df26a66040b1fadddfeab`](https://github.com/baubs27/Mental-Health-Application/commit/67d5b941827254e7058df26a66040b1fadddfeab) | [Part 3.3 design changes](docs/design-pipeline.md#part-33-personalization-update); [test and build evidence](docs/verification.md#part-33-integration-and-evaluation) | No app or process recording is committed yet; see the report for recording status. |
+| **3.3 — Integration, evaluation, and demonstration** | [`docs/part-3.3/report.md`](docs/part-3.3/report.md) and [15-scenario evaluation](docs/part-3.3/evaluation.md) | [`9ef64abd579bbebf6314f7bd8be79e8e46a2566e`](https://github.com/baubs27/Mental-Health-Application/commit/9ef64abd579bbebf6314f7bd8be79e8e46a2566e) | [Part 3.3 design changes](docs/design-pipeline.md#part-33-personalization-update); [test and build evidence](docs/verification.md#part-33-integration-and-evaluation) | No app or process recording is committed yet; see the report for recording status. |
 
 **What is complete:** Part 3.1 documents the proposed skill experience, model role, data, user control, and links to the research findings. Part 3.2 provides a Vue/FastAPI/SQLite coursework prototype with STOP, paced breathing, open-ended chat, saved local history, and a crisis route independent of the model. Part 3.3 adds opt-in chat personalization and history-based practice shortcuts, a deterministic 15-scenario evaluation, and cross-case checks.
 
