@@ -112,3 +112,18 @@ backend. From that clean dependency setup, the backend suite passed 36 tests,
 frontend `npm test` passed 9, and `npm run build` succeeded. The GitHub main
 branch was fetched afterward and its head matched the submitted commit. The
 clone was on the same Windows host rather than a second person's machine.
+
+## Readiness recheck — November 2, 2026
+
+- Backend: `.venv\Scripts\python.exe -m pytest -vv -p no:cacheprovider --basetemp .pytest-run-ready3 tests` — **36 passed**. The existing suite emits one Starlette/AnyIO deprecation warning.
+- Frontend: `npm test` — **9 passed**; `npm run build` — production build succeeded.
+- Local runtime: `http://127.0.0.1:5173/` returned HTTP 200; API configuration reported deterministic `demo` mode with no text or voice provider configured. The independent `/api/support` route returned emergency-support wording.
+- Credential hygiene: cleared the exposed API key from ignored local `backend/.env`, preserving other local settings, then restarted the API against `data/part33-demo.sqlite3`. No live model call was made. Revoke the exposed credential in the provider dashboard before configuring any replacement.
+- Profile feedback: preference changes now report saving/success/failure inline with an announced status. The frontend suite and production build passed after this change; the browser UI was not re-recorded.
+
+The app was opened in the in-app browser at Profile. Its accessibility tree
+showed the saved STOP usual practice, reflective response style, and enabled
+personalization choice, along with the persistent Crisis control. This was a
+live UI observation, not a screen recording; the new save-status behavior was
+compiled and tested but not triggered in this walkthrough. The recording,
+live-model variation, and peer-testing gaps remain.

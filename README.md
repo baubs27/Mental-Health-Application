@@ -18,6 +18,8 @@ Upload one `report.md` file for each part. The reports and evidence currently in
 
 **What is complete:** Part 3.1 documents the proposed skill experience, model role, data, user control, and links to the research findings. Part 3.2 provides a Vue/FastAPI/SQLite coursework prototype with STOP, paced breathing, open-ended chat, saved local history, and a crisis route independent of the model. Part 3.3 adds opt-in chat personalization and history-based practice shortcuts, a deterministic 15-scenario evaluation, and cross-case checks.
 
+**AI-use disclosure and curated evidence:** [`AI-USE.md`](AI-USE.md) names the AI tools and model roles. [`docs/evidence-log.md`](docs/evidence-log.md) connects selected prompts to implementation changes, verification observations, and a revised approach while redacting credentials and personal information.
+
 **What the evidence shows:** Verification notes record frontend tests and build, backend tests, browser profile persistence, deterministic model replies, SQLite storage, and forced-failure behavior. Local evaluation uses fictional inputs and mocks; no live provider calls were made for Part 3.3.
 
 **Still unresolved:** No app walkthrough or process recording is in the repository. Live-model variation and peer testing remain outstanding because the previously supplied provider key was exposed and no rotated key was configured. Voice, message deletion/retention, screen-reader behavior, and crisis-resource localization need further review. The app is a fictional coursework prototype, not a support or clinical service.
@@ -44,7 +46,8 @@ practice and SQLite conversation history.
 
 - Vue interface for STOP and paced breathing, measured elapsed time, optional
   visual pacing, early exit, self-reported check-ins, a monthly activity summary,
-  editable local preferences, history, and independent crisis support.
+  editable local preferences with visible save/error status, history, and
+  independent crisis support.
 - Main navigation for Home, Activities, Chat, History, Profile, and Crisis.
 - Standalone, open-ended model chat with starter prompts and saved local
   conversations; STOP questions are answered when relevant rather than forcing

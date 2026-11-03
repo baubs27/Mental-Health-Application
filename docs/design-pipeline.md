@@ -90,7 +90,8 @@ chosen style only after opt-in. In live mode the backend may also provide
 aggregate completion counts and usual practice to the current chat's model
 instructions. It does not send check-ins or other chat transcripts in this
 summary. The existing recent turns from the active chat remain ordinary
-conversation context when live mode is used.
+conversation context when live mode is used. Profile changes show an inline
+saving, success, or error status on the page where the choice was made.
 
 Implementation detail: `storage.get_personalization_context()` reads the
 profile and completed practice records, returns no summary when opt-in is off,
