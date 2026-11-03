@@ -106,7 +106,7 @@ for the exact limitation and outstanding evidence.
 The README commands were followed in a fresh temporary clone of `main` after
 applying the Part 3.3 working-tree changes, which were then committed and pushed
 as `67d5b941827254e7058df26a66040b1fadddfeab`. With Node.js 24.20.0 and Python
-3.14.1, `npm ci` installed the locked frontend packages; `py -m venv .venv`,
+3.14.7, `npm ci` installed the locked frontend packages; `py -m venv .venv`,
 `pip install -r requirements.txt`, and copying `.env.example` completed for the
 backend. From that clean dependency setup, the backend suite passed 36 tests,
 frontend `npm test` passed 9, and `npm run build` succeeded. The GitHub main
