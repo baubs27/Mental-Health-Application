@@ -3,7 +3,7 @@
 ## Submitted version
 
 - Repository: [Mental Health Application](https://github.com/baubs27/Mental-Health-Application)
-- Commit: pending publication of this Part 3.3 update.
+- Application commit: [`67d5b941827254e7058df26a66040b1fadddfeab`](https://github.com/baubs27/Mental-Health-Application/commit/67d5b941827254e7058df26a66040b1fadddfeab).
 - Run instructions: [project README](../../README.md#run-locally)
 - Design and generated-code explanation: [design pipeline](../design-pipeline.md#part-33-personalization-update)
 - Evaluation cases and observed results: [fictional scenario evaluation](evaluation.md)
@@ -75,11 +75,10 @@ forced model failure.
 ## Recording status
 
 This update does not include the requested continuous demo recording or the
-process screencast. The available browser automation can inspect and operate
-the app, but it does not expose browser video recording; the desktop recorder
-was unavailable in the current session. The browser walkthrough and automated
-failure/history assertions are documented, but they are not represented as a
-recording.
+process screencast. Computer Use was interrupted while the built-in screen
+recorder was being opened, before a recording could be captured. The browser
+walkthrough and automated failure/history assertions are documented, but they
+are not represented as a recording.
 
 ## Live-model and peer-testing status
 

@@ -2,7 +2,8 @@
 
 ## State
 
-Part 3.3 implementation is in progress. The app now has an additive profile
+Part 3.3 implementation is published on `main` at
+`67d5b941827254e7058df26a66040b1fadddfeab`. The app now has an additive profile
 migration, an explicit chat response-style preference, an off-by-default
 personalization switch, a Home shortcut to repeat the latest completed
 practice, and deterministic crisis/diagnosis/medication boundaries. The user’s
@@ -31,5 +32,5 @@ demo servers are running at `127.0.0.1:5173` and `127.0.0.1:8000` with
 
 See `README.md`, `docs/design-pipeline.md`, `docs/verification.md`, and
 `docs/part-3.3/` for implementation rationale, run instructions, and scenario
-results. The standalone task workspace itself is not a local Git checkout;
-the GitHub `main` commit must be recorded in the Part 3.3 report after publish.
+results. The workspace copy is not a local Git checkout; publish subsequent
+changes through the temporary Git clone workflow.

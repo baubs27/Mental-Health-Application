@@ -103,11 +103,12 @@ for the exact limitation and outstanding evidence.
 
 ### Clean-checkout run instructions
 
-The README commands are intended for a clean checkout with Node.js 20.19+ (or
-22.12+) and Python 3.10+: create a backend virtual environment, install the
-listed requirements, copy `.env.example`, start FastAPI in demo mode, run
-`npm ci` in `frontend/`, and start Vite in a second terminal. The checked
-workspace already had its declared packages installed, and the test suite and
-build passed. A completely fresh network clone/install was not performed in
-this pass, so package downloads on another machine remain dependent on their
-platform and package registry availability.
+The README commands were followed in a fresh temporary clone of `main` after
+applying the Part 3.3 working-tree changes, which were then committed and pushed
+as `67d5b941827254e7058df26a66040b1fadddfeab`. With Node.js 24.20.0 and Python
+3.14.1, `npm ci` installed the locked frontend packages; `py -m venv .venv`,
+`pip install -r requirements.txt`, and copying `.env.example` completed for the
+backend. From that clean dependency setup, the backend suite passed 36 tests,
+frontend `npm test` passed 9, and `npm run build` succeeded. The GitHub main
+branch was fetched afterward and its head matched the submitted commit. The
+clone was on the same Windows host rather than a second person's machine.

@@ -62,3 +62,15 @@ failure behavior therefore remain unobserved; the test results above are not
 live-model evidence. No peer session was performed. Screen-reader behavior,
 abrupt browser-process termination, mobile devices, and localization outside
 the US also remain untested.
+
+## Clean-checkout setup
+
+A fresh temporary clone was created from the repository's `main` branch. The
+Part 3.3 working-tree changes were applied there before they were committed and
+pushed. The README's install commands completed from clean dependency
+directories (`npm ci`, Python virtual environment creation, backend
+requirements install, and `.env.example` copy). The backend suite passed 36
+tests, the frontend passed 9, and the production build succeeded. The checkout
+was fetched after publication and matched commit
+`67d5b941827254e7058df26a66040b1fadddfeab`. This used a new checkout on the
+same Windows host, not a second person's computer.
